@@ -214,6 +214,11 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
             <select id="uv_dyesel"><option value="">&mdash; manual entry &mdash;</option></select></label>
           <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="uv_a280" type="number" step="0.0001" value="7.4315"></label>
           <label class="field"><span>A&lambda;max <span class="unit">(AU)</span></span><input id="uv_almax" type="number" step="0.0001" value="0.7827"></label>
+          <div class="grid">
+            <label class="field"><span>&sigma; A280 <span class="unit">(AU, optional)</span></span><input id="uv_sa280" type="number" step="0.001" min="0" placeholder="e.g. 0.01"></label>
+            <label class="field"><span>&sigma; A&lambda;max <span class="unit">(AU, optional)</span></span><input id="uv_salmax" type="number" step="0.001" min="0" placeholder="e.g. 0.01"></label>
+          </div>
+          <p class="sub" style="margin:-2px 0 8px">Enter absorbance read errors to propagate a 95% confidence interval onto the DAR. Leave blank to skip.</p>
 
           <details class="advanced">
             <summary>Advanced &middot; constants</summary>
@@ -693,6 +698,46 @@ function extinctionCoefficient(concentrationsM, absorbances, pathLengthCm = 1.0)
            intercept: fit.intercept, rSquared: fit.rSquared, n: fit.n };
 }
 
+// ── 9b. Uncertainty / error propagation ─────────────────────────────────────
+// UV DAR depends on the reads only via R=aLmax/a280; sigma_DAR=|dDAR/dR|*sigma_R.
+function darUVUncertainty(a280, aLmax, eps280Mab, epsLmaxMab, eps280Lp, epsLmaxLp,
+                          sigmaA280 = 0.0, sigmaALmax = 0.0) {
+  if (a280 === 0) throw new Error("A280 must be non-zero");
+  if (aLmax === 0 && sigmaALmax !== 0.0) throw new Error("A_lmax must be non-zero to propagate its error");
+  const r = aLmax / a280;
+  const denom = r * eps280Lp - epsLmaxLp;
+  if (denom === 0) throw new Error("Degenerate optics: R*eps280_LP == eps_lmax_LP");
+  const dar = (epsLmaxMab - r * eps280Mab) / denom;
+  const numer = epsLmaxMab - r * eps280Mab;
+  const dDarDr = (-eps280Mab * denom - numer * eps280Lp) / (denom * denom);
+  let relVar = 0.0;
+  if (sigmaA280) relVar += (sigmaA280 / a280) ** 2;
+  if (sigmaALmax) relVar += (sigmaALmax / aLmax) ** 2;
+  const sigmaR = Math.abs(r) * Math.sqrt(relVar);
+  const sigmaDar = Math.abs(dDarDr) * sigmaR;
+  return { dar, sigmaDar, ci95Low: dar - 1.96 * sigmaDar, ci95High: dar + 1.96 * sigmaDar,
+           sigmaR, relSigma: dar !== 0 ? sigmaDar / dar : null };
+}
+// Population mean/variance/SD of a weighted drug-load distribution (heterogeneity).
+function distributionDispersion(weights) {
+  const ks = Object.keys(weights);
+  let total = 0; for (const k of ks) total += weights[k];
+  if (total === 0) throw new Error("Total weight must be non-zero");
+  let mean = 0; for (const k of ks) mean += Number(k) * weights[k]; mean /= total;
+  let variance = 0; for (const k of ks) variance += weights[k] * (Number(k) - mean) ** 2; variance /= total;
+  return { mean, variance, sd: Math.sqrt(variance) };
+}
+// Reduced LC-MS DAR SD: var = 2var(LC)+2var(HC) (2 light + 2 heavy chains, independent).
+function darLcmsReducedUncertainty(lightChain, heavyChain) {
+  const lc = distributionDispersion(lightChain);
+  const hc = distributionDispersion(heavyChain);
+  const dar = 2 * lc.mean + 2 * hc.mean;
+  const variance = 2 * lc.variance + 2 * hc.variance;
+  const sigmaDar = Math.sqrt(variance);
+  return { dar, sigmaDar, lightSd: lc.sd, heavySd: hc.sd,
+           ci95Low: dar - 1.96 * sigmaDar, ci95High: dar + 1.96 * sigmaDar };
+}
+
 // ── 10. Embedded dye / payload library (spreadsheet cols L-R) ───────────────
 const DYE_LIBRARY = [
   { name: "AF350", mw: 410, e_lmax: 19000, cf280: 0.19, e280: 3610, lmax: 350, comment: null },
@@ -811,6 +856,11 @@ function selfCheck() {
   ok(extinctionCoefficient(CONC,AB280,1.0).eps,50000.0,"eps L=1");
   ok(extinctionCoefficient(CONC,AB280,0.5).eps,100000.0,"eps L=0.5");
   results.push("PASS extinction coefficient (regression)");
+  const uu=darUVUncertainty(A280,A_LMAX,EPS280_MAB,0.0,EPS280_LP,EPS_LMAX_LP,0.01,0.01);
+  ok(uu.dar,2.4140809554780795,"DAR unc point"); ok(uu.sigmaDar,0.03370113601940267,"DAR unc sigma");
+  ok(distributionDispersion({0:5,1:15,2:45,3:25,4:10}).sd,0.9797958971132712,"HIC dispersion sd");
+  ok(darLcmsReducedUncertainty({0:10,1:90},{0:5,1:20,2:75}).sigmaDar,0.8944271909999159,"LC-MS reduced sigma");
+  results.push("PASS uncertainty (UV / HIC / LC-MS)");
   if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;
@@ -825,6 +875,7 @@ const ADC = {
   darLcmsReducedBreakdown,
   molesFromMass, reagentVolumeUL, planConjugation, yieldAndFormulation,
   linearRegression, extinctionCoefficient,
+  darUVUncertainty, distributionDispersion, darLcmsReducedUncertainty,
   getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
   makeRegistryRecord, registryToCsv, summarizeRegistry, REGISTRY_FIELDS,
 };
@@ -871,8 +922,21 @@ function calcUV() {
     const dar = ADC.darUV(a280, almax, e280Mab, elmaxMab, e280Lp, elmaxLp);
     const p = ADC.adcProperties(dar, mwMab, mwLp, e280Mab, e280Lp, a280, df);
     const cUnk = ADC.concUnknownPayloadEps(a280, almax, e280Lp, elmaxLp, e280MabMass, df);
+    // optional error propagation onto DAR
+    const sA280 = num("uv_sa280"), sAlmax = num("uv_salmax");
+    const hasSig = (!Number.isNaN(sA280) && sA280 > 0) || (!Number.isNaN(sAlmax) && sAlmax > 0);
+    let darCell = fmt(dar, 3);
+    let ciRow = "";
+    if (hasSig) {
+      const u = ADC.darUVUncertainty(a280, almax, e280Mab, elmaxMab, e280Lp, elmaxLp,
+                                     Number.isNaN(sA280) ? 0 : sA280, Number.isNaN(sAlmax) ? 0 : sAlmax);
+      darCell = `${fmt(dar, 3)} &plusmn; ${fmt(u.sigmaDar, 3)}`;
+      ciRow = rrow("DAR 95% CI", `${fmt(u.ci95Low, 3)} &ndash; ${fmt(u.ci95High, 3)}`)
+            + rrow("DAR relative &sigma;", u.relSigma === null ? "&mdash;" : fmt(100 * u.relSigma, 1) + "%");
+    }
     out.innerHTML = "<h3>Results</h3>"
-      + rrow("DAR (drug : antibody)", fmt(dar, 3), "primary")
+      + rrow("DAR (drug : antibody)", darCell, "primary")
+      + ciRow
       + rrow("&epsilon;280 antibody (molar)", fmt(e280Mab, 0) + " M&#8315;&#185;cm&#8315;&#185;")
       + rrow("ADC MW", fmt(p.mwAdc, 1) + " g/mol")
       + rrow("&epsilon;280 ADC (molar)", fmt(p.eps280AdcMolar, 0) + " M&#8315;&#185;cm&#8315;&#185;")
@@ -995,7 +1059,10 @@ function calcHic() {
   const map = {}; hicSpecies.forEach((s) => { map[s.k] = (map[s.k] || 0) + s.a; });
   try {
     const dar = ADC.darHIC(map), frac = ADC.darSpeciesFractions(map);
-    let html = "<h3>Results</h3>" + rrow("Average DAR", fmt(dar, 3), "primary") + "<h3 style='margin-top:14px'>Species distribution</h3>";
+    const disp = ADC.distributionDispersion(map);
+    let html = "<h3>Results</h3>" + rrow("Average DAR", fmt(dar, 3), "primary")
+      + rrow("Load heterogeneity (SD)", "&plusmn; " + fmt(disp.sd, 3) + " drugs")
+      + "<h3 style='margin-top:14px'>Species distribution</h3>";
     Object.keys(frac).sort((a, b) => a - b).forEach((k) => { html += rrow("DAR " + k, fmt(frac[k], 1) + " %"); });
     $("hic_out").innerHTML = html;
   } catch (e) { $("hic_out").innerHTML = placeholder("Enter peak areas for at least one species"); }
@@ -1038,16 +1105,19 @@ function calcLcms() {
     let html;
     if (lcmsMode === "reduced") {
       const bd = ADC.darLcmsReducedBreakdown(toMap(lcLC), toMap(lcHC));
-      const chainRows = (label, s) =>
+      const u = ADC.darLcmsReducedUncertainty(toMap(lcLC), toMap(lcHC));
+      const chainRows = (label, s, sd) =>
           rrow(label + " &Sigma;I (total intensity)", fmt(s.sum_i, 1))
         + rrow(label + " &Sigma;k&middot;I (weighted)", fmt(s.sum_ki, 1))
         + rrow(label + " mean (drugs/chain)", fmt(s.mean, 4))
+        + rrow(label + " load SD (per chain)", "&plusmn; " + fmt(sd, 4))
         + rrow(label + " contribution (2&times;mean)", fmt(s.contribution, 4));
-      html = rrow("DAR", fmt(bd.dar, 3), "primary")
+      html = rrow("DAR", fmt(bd.dar, 3) + " &plusmn; " + fmt(u.sigmaDar, 3), "primary")
+        + rrow("DAR 95% CI", fmt(u.ci95Low, 3) + " &ndash; " + fmt(u.ci95High, 3))
         + rrow("Mode", "denaturing + reducing")
         + "<div class=\"rrow\" style=\"border:0;padding-top:6px\"><span class=\"k\" style=\"font-weight:600\">Per-chain breakdown</span><span class=\"v\"></span></div>"
-        + chainRows("Light chain", bd.light)
-        + chainRows("Heavy chain", bd.heavy)
+        + chainRows("Light chain", bd.light, u.lightSd)
+        + chainRows("Heavy chain", bd.heavy, u.heavySd)
         + rrow("DAR = 2&middot;mean&#8202;LC + 2&middot;mean&#8202;HC",
                fmt(bd.light.contribution, 4) + " + " + fmt(bd.heavy.contribution, 4)
                + " = " + fmt(bd.dar, 4));
@@ -1220,8 +1290,13 @@ function renderEcChart(series, factor) {
   const unitLabels = { "0.000001": "\u00b5M", "1e-6": "\u00b5M", "1e-9": "nM", "0.001": "mM", "1": "M" };
   const unit = unitLabels[String(factor)] || "M";
   const sc = 1 / factor; // convert molar back to display unit for axis
-  const W = 520, H = 300, mL = 58, mR = 96, mT = 16, mB = 46;
-  const pw = W - mL - mR, ph = H - mT - mB;
+  // main panel + a residual strip beneath it (observed - fitted absorbance).
+  const rh = 74, rgap = 30;              // residual-panel height + gap
+  const W = 520, H = 300 + rgap + rh, mL = 58, mR = 96, mT = 16, mBmain = 30;
+  const mB = 46;                          // bottom margin for x-axis title under residual strip
+  const pw = W - mL - mR;                 // plot area width
+  const ph = 300 - mT - mBmain;           // main plot area height (fit region unchanged)
+  const rTop = mT + ph + rgap;            // residual panel top
   const allX = [], allY = [];
   series.forEach((s) => s.pts.forEach(([x, y]) => { allX.push(x); allY.push(y); }));
   let xMin = 0, xMax = Math.max(...allX), yMin = 0, yMax = Math.max(...allY);
@@ -1239,7 +1314,7 @@ function renderEcChart(series, factor) {
     svg += `<line x1="${mL}" y1="${gy.toFixed(1)}" x2="${mL + pw}" y2="${gy.toFixed(1)}" stroke="var(--line)" stroke-dasharray="2 3"/>`;
     svg += `<text x="${mL - 8}" y="${(gy + 3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="var(--faint)">${esc(yv)}</text>`;
     const gx = mL + pw * i / 4, xv = (xMin + (xMax - xMin) * i / 4) * sc;
-    svg += `<text x="${gx.toFixed(1)}" y="${mT + ph + 16}" text-anchor="middle" font-size="10.5" fill="var(--faint)">${esc(xv)}</text>`;
+    svg += `<text x="${gx.toFixed(1)}" y="${rTop + rh + 16}" text-anchor="middle" font-size="10.5" fill="var(--faint)">${esc(xv)}</text>`;
   }
   // axis titles
   svg += `<text x="${mL + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11.5" fill="var(--muted)">Concentration (${unit})</text>`;
@@ -1251,6 +1326,28 @@ function renderEcChart(series, factor) {
     svg += `<line x1="${px(xMin).toFixed(1)}" y1="${cy1.toFixed(1)}" x2="${px(xMax).toFixed(1)}" y2="${cy2.toFixed(1)}" stroke="${s.color}" stroke-width="1.6" opacity="0.85"/>`;
     s.pts.forEach(([x, y]) => {
       svg += `<circle cx="${px(x).toFixed(1)}" cy="${py(y).toFixed(1)}" r="3.6" fill="${s.color}" stroke="#fff" stroke-width="1"/>`;
+    });
+  });
+  // ---- residual strip: observed - fitted absorbance for each point ----
+  let rMax = 0;
+  series.forEach((s) => s.pts.forEach(([x, y]) => {
+    rMax = Math.max(rMax, Math.abs(y - (s.intercept + s.slope * x)));
+  }));
+  if (rMax === 0) rMax = 1;               // flat/degenerate: avoid /0, keep zero-line centered
+  rMax *= 1.25;
+  const ry = (r) => rTop + rh / 2 - (r / rMax) * (rh / 2 - 4);
+  svg += `<rect x="${mL}" y="${rTop}" width="${pw}" height="${rh}" fill="#fff" stroke="var(--line)"/>`;
+  svg += `<line x1="${mL}" y1="${(rTop + rh / 2).toFixed(1)}" x2="${mL + pw}" y2="${(rTop + rh / 2).toFixed(1)}" stroke="var(--muted)" stroke-width="1"/>`;
+  // +/- max residual tick labels
+  svg += `<text x="${mL - 8}" y="${(rTop + 4 + 3.5).toFixed(1)}" text-anchor="end" font-size="9.5" fill="var(--faint)">+${esc(rMax / 1.25)}</text>`;
+  svg += `<text x="${mL - 8}" y="${(rTop + rh - 4 + 3.5).toFixed(1)}" text-anchor="end" font-size="9.5" fill="var(--faint)">\u2212${esc(rMax / 1.25)}</text>`;
+  svg += `<text x="14" y="${rTop + rh / 2}" text-anchor="middle" font-size="10.5" fill="var(--muted)" transform="rotate(-90 14 ${rTop + rh / 2})">Residual</text>`;
+  series.forEach((s) => {
+    s.pts.forEach(([x, y]) => {
+      const res = y - (s.intercept + s.slope * x);
+      const cx = px(x), cyz = rTop + rh / 2, cyr = ry(res);
+      svg += `<line x1="${cx.toFixed(1)}" y1="${cyz.toFixed(1)}" x2="${cx.toFixed(1)}" y2="${cyr.toFixed(1)}" stroke="${s.color}" stroke-width="1" opacity="0.55"/>`;
+      svg += `<circle cx="${cx.toFixed(1)}" cy="${cyr.toFixed(1)}" r="3" fill="${s.color}" stroke="#fff" stroke-width="0.8"/>`;
     });
   });
   // legend
