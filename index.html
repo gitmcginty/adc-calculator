@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ADC Calculator</title>
+<style>
+:root{
+  --bg:#ffffff; --panel:#ffffff; --ink:#101418; --muted:#68727d;
+  --line:#e3e7eb; --field:#f5f7f9; --accent:#0a66ff; --accent-soft:#eaf1ff;
+  --warn:#9a5b00; --result:#f7f9fb;
+  --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
+  --s1:8px; --s2:16px; --s3:24px; --s4:32px;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:var(--s3) 0}
+header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.2px}
+header p{margin:6px 0 0;font-size:13px;color:var(--muted);max-width:70ch}
+.wrap{max-width:1120px;margin:0 auto;padding:0 var(--s3)}
+nav.tabs{display:flex;flex-wrap:wrap;gap:var(--s3);background:var(--panel);border-bottom:1px solid var(--line);
+  padding:0 var(--s3);position:sticky;top:0;z-index:20}
+nav.tabs button{background:none;border:none;padding:14px 0;font-size:14px;cursor:pointer;color:var(--muted);
+  border-bottom:2px solid transparent;font-weight:500;white-space:nowrap}
+nav.tabs button:hover{color:var(--ink)}
+nav.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+main{padding:var(--s3) 0 64px}
+.panel{display:none}
+.panel.active{display:block}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:var(--s3);margin-bottom:var(--s2)}
+.card h2{margin:0 0 var(--s1);font-size:18px;font-weight:600}
+.card .desc{color:var(--muted);font-size:13px;margin:0 0 var(--s2);max-width:70ch}
+.formula{font-family:var(--mono);font-size:12px;background:var(--field);color:var(--ink);
+  padding:var(--s1) var(--s2);border-radius:6px;margin:0 0 var(--s2);overflow-x:auto;white-space:pre;border:1px solid var(--line)}
+/* segmented control */
+.segmented{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:var(--s3)}
+.segmented button{background:var(--panel);border:none;border-left:1px solid var(--line);padding:8px 18px;font-size:14px;
+  cursor:pointer;color:var(--muted);font-weight:500}
+.segmented button:first-child{border-left:none}
+.segmented button.active{background:var(--accent);color:#fff}
+.method{display:none}
+.method.active{display:block}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2) var(--s3)}
+.grid.cols3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:760px){.grid,.grid.cols3{grid-template-columns:1fr}}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+@media(max-width:860px){.split{grid-template-columns:1fr}}
+label.field{display:block;margin-bottom:var(--s2)}
+label.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:500}
+label.field .unit{color:#9aa4ae;font-weight:400}
+input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px;
+  font-family:var(--mono);background:var(--panel);color:var(--ink)}
+input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+input[readonly]{background:var(--field);color:var(--muted);cursor:default;border-style:dashed}
+select{font-family:inherit}
+details.advanced{border:1px solid var(--line);border-radius:8px;padding:0;margin-bottom:var(--s2)}
+details.advanced>summary{cursor:pointer;padding:12px var(--s2);font-size:13px;font-weight:500;color:var(--muted);
+  list-style:none;user-select:none}
+details.advanced>summary::-webkit-details-marker{display:none}
+details.advanced>summary::before{content:"\25b8 ";color:var(--muted)}
+details.advanced[open]>summary::before{content:"\25be "}
+details.advanced[open]>summary{border-bottom:1px solid var(--line)}
+.advanced-body{padding:var(--s2)}
+.derived-note{font-size:12px;color:var(--muted);margin:var(--s2) 0 8px;font-weight:500}
+/* results card - light neutral */
+.results{background:var(--result);border:1px solid var(--line);border-radius:8px;padding:var(--s3);min-height:120px}
+.results h3{margin:0 0 var(--s2);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+.rrow{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+.rrow:last-child{border-bottom:none}
+.rrow .k{font-size:13px;color:var(--muted)}
+.rrow .v{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--ink)}
+.rrow.primary{padding:6px 0 14px;border-bottom:1px solid var(--line)}
+.rrow.primary .k{align-self:center}
+.rrow.primary .v{font-size:34px;font-weight:600;color:var(--ink);line-height:1.1}
+.placeholder{color:var(--muted);font-size:14px;text-align:center;padding:40px 20px}
+.note{background:var(--field);border-left:2px solid var(--warn);padding:10px 14px;border-radius:0 6px 6px 0;
+  font-size:13px;color:var(--ink);margin-top:var(--s2)}
+.note ul{margin:6px 0 0;padding-left:18px}.note li{margin:2px 0}
+.btnrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-top:var(--s1)}
+button.act{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;
+  font-size:14px;font-weight:500}
+button.act:hover{background:#0554d6}
+button.ghost{background:var(--panel);color:var(--accent);border:1px solid var(--line);padding:8px 14px;border-radius:6px;
+  cursor:pointer;font-size:13px}
+button.ghost:hover{border-color:var(--accent)}
+table.dye{width:100%;border-collapse:collapse;font-size:13px}
+table.dye th,table.dye td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+table.dye th{background:var(--field);font-weight:600;position:sticky;top:53px;cursor:pointer;user-select:none}
+table.dye td.num,table.dye th.num{text-align:right;font-family:var(--mono)}
+table.dye tr:hover td{background:var(--accent-soft)}
+.dye-search{max-width:280px;margin-bottom:var(--s2)}
+.speciesrow{display:grid;grid-template-columns:70px 1fr 34px;gap:var(--s1);align-items:center;margin-bottom:8px}
+.speciesrow input{font-family:var(--mono)}
+.speciesrow button{background:var(--panel);border:1px solid var(--line);border-radius:6px;cursor:pointer;color:var(--muted);height:34px}
+.addrow{font-size:13px}
+.tag{display:inline-block;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:2px 10px;
+  font-size:12px;margin:2px 4px 2px 0;font-family:var(--mono)}
+.footer{color:var(--muted);font-size:12px;text-align:center;padding:var(--s3)}
+.sub{font-size:12px;color:var(--muted);margin-top:2px}
+.regbox{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:var(--s2)}
+.regbox .sub{margin-bottom:var(--s1)}
+button.danger{color:var(--warn);border-color:var(--line)}
+button.danger:hover{border-color:var(--warn)}
+.logbtn{margin-top:var(--s2)}
+#reg_summary_body .rrow{padding:4px 0;font-size:13px;display:flex;justify-content:space-between}
+#reg_summary_body .rrow .k{color:var(--muted)}
+#reg_summary_body .rrow .v{font-family:var(--mono);color:var(--ink)}
+table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointer;font-size:14px;padding:0 4px}
+#reg_table th{position:static;cursor:default}
+.pillrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-bottom:var(--s2)}
+.pillrow button{font-size:13px;padding:6px 12px;border-radius:20px;border:1px solid var(--line);background:var(--panel);
+  cursor:pointer;color:var(--muted)}
+.pillrow button:hover{border-color:var(--accent);color:var(--accent)}
+.mstatus{font-size:12px;font-family:var(--mono);color:var(--muted);margin-top:var(--s1)}
+.reagent-add{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header><div class="wrap"><h1>ADC Calculator</h1>
+<p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; core validated against reference spreadsheet &amp; protocols</p></div></header>
+<nav class="tabs wrap" id="tabs">
+  <button data-tab="dar" class="active">DAR</button>
+  <button data-tab="conj">Conjugation Designer</button>
+  <button data-tab="ellman">Ellman (free thiols)</button>
+  <button data-tab="yield">Yield &amp; Formulation</button>
+  <button data-tab="dyes">Dye / Payload Library</button>
+  <button data-tab="registry">ADC Registry</button>
+</nav>
+<main class="wrap">
+
+<!-- ============ DAR (UV/Vis · HIC · LC-MS) ============ -->
+<section class="panel active" id="panel-dar">
+  <div class="card">
+    <h2>Drug-to-antibody ratio (DAR)</h2>
+    <p class="desc">Determine average DAR by any of three orthogonal methods. Pick the method you ran &mdash; the inputs and formula update to match.</p>
+    <div class="segmented" id="dar_methods">
+      <button data-method="uv" class="active" onclick="setDarMethod('uv')">UV/Vis</button>
+      <button data-method="hic" onclick="setDarMethod('hic')">HIC</button>
+      <button data-method="lcms" onclick="setDarMethod('lcms')">LC-MS</button>
+    </div>
+
+    <!-- ---- UV/Vis method ---- -->
+    <div class="method active" id="method-uv">
+      <div class="formula">DAR = (&epsilon;&lambda;max,mAb &minus; R&middot;&epsilon;280,mAb) / (R&middot;&epsilon;280,LP &minus; &epsilon;&lambda;max,LP),   R = A&lambda;max / A280</div>
+      <div class="split">
+        <div>
+          <label class="field"><span>Payload from library</span>
+            <select id="uv_dyesel"><option value="">&mdash; manual entry &mdash;</option></select></label>
+          <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="uv_a280" type="number" step="0.0001" value="7.4315"></label>
+          <label class="field"><span>A&lambda;max <span class="unit">(AU)</span></span><input id="uv_almax" type="number" step="0.0001" value="0.7827"></label>
+
+          <details class="advanced">
+            <summary>Advanced &middot; constants</summary>
+            <div class="advanced-body">
+              <div class="grid">
+                <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="uv_mwmab" type="number" value="145000"></label>
+                <label class="field"><span>&epsilon;280 antibody <span class="unit">(mg/mL&middot;cm)&#8315;&#185;</span></span><input id="uv_e280mab_mass" type="number" step="0.01" value="1.4"></label>
+                <label class="field"><span>Dilution factor</span><input id="uv_df" type="number" step="0.1" value="1"></label>
+                <label class="field"><span>&epsilon;&lambda;max antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxmab" type="number" value="0"></label>
+              </div>
+              <p class="derived-note">Payload extinction coefficients (auto-filled from the library selection):</p>
+              <div class="grid cols3">
+                <label class="field"><span>LP MW <span class="unit">(g/mol)</span></span><input id="uv_mwlp" type="number" value="1559.62" readonly></label>
+                <label class="field"><span>&epsilon;280 LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_e280lp" type="number" value="7287" readonly></label>
+                <label class="field"><span>&epsilon;&lambda;max LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxlp" type="number" value="9624" readonly></label>
+              </div>
+            </div>
+          </details>
+          <div class="pillrow">
+            <button onclick="uvPreset('naked')">Example: mAb + AF647 (DAR&nbsp;&asymp;&nbsp;2.4)</button>
+            <button onclick="uvPreset('sheet')">Reproduce spreadsheet (DAR&nbsp;=&nbsp;0)</button>
+          </div>
+        </div>
+        <div>
+          <div class="results" id="uv_out"></div>
+          <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('uv')">&#8862; Log to registry</button><span class="sub" id="log_uv_msg" style="align-self:center"></span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- HIC method ---- -->
+    <div class="method" id="method-hic">
+      <div class="formula">DAR = &Sigma;(AUC&#7522; &middot; i) / &Sigma;AUC&#7522;</div>
+      <div class="split">
+        <div>
+          <p class="sub">Enter peak area for each DAR species:</p>
+          <div id="hic_rows"></div>
+          <div class="btnrow"><button class="ghost" onclick="addHicRow()">+ Add species</button></div>
+        </div>
+        <div><div class="results" id="hic_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('hic')">&#8862; Log to registry</button><span class="sub" id="log_hic_msg" style="align-self:center"></span></div></div>
+      </div>
+    </div>
+
+    <!-- ---- LC-MS method ---- -->
+    <div class="method" id="method-lcms">
+      <div class="formula" id="lcms_formula"></div>
+      <div class="pillrow">
+        <button onclick="setLcmsMode('reduced')" id="lc_m_reduced">Reduced (LC + HC)</button>
+        <button onclick="setLcmsMode('intact')" id="lc_m_intact">Intact / native</button>
+      </div>
+      <div class="split">
+        <div id="lcms_inputs"></div>
+        <div><div class="results" id="lcms_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('lcms')">&#8862; Log to registry</button><span class="sub" id="log_lcms_msg" style="align-self:center"></span></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Conjugation Designer ============ -->
+<section class="panel" id="panel-conj">
+  <div class="card">
+    <h2>Conjugation Designer</h2>
+    <p class="desc">Plan a conjugation reaction from antibody mass and reagent equivalents. Computes moles of antibody (and free thiols where relevant), reagent stock volumes, reaction volume at the target antibody concentration, and cosolvent top-up. Route presets carry the protocol defaults.</p>
+    <div class="formula">n(mAb) = mass / MW    V(reagent) = (equiv &middot; n_ref) / C_stock    V_rxn = mass / [mAb]</div>
+    <div class="pillrow">
+      <button onclick="conjPreset('thiomab')">Thiomab &middot; maleimide DAR&nbsp;2</button>
+      <button onclick="conjPreset('cys_native')">Cys native &middot; full reduction DAR&nbsp;8</button>
+      <button onclick="conjPreset('lysine')">Lysine &middot; NHS ester</button>
+      <button onclick="conjPreset('mtgase')">MTGase &middot; site-specific DAR&nbsp;2</button>
+    </div>
+    <div class="split">
+      <div>
+        <div class="grid cols3">
+          <label class="field"><span>Route</span><select id="cj_route">
+            <option value="cys_native">Cysteine &ndash; native disulfide</option>
+            <option value="cys_rebridge">Cysteine &ndash; rebridging</option>
+            <option value="thiomab">Thiomab (engineered Cys)</option>
+            <option value="lysine">Lysine</option>
+            <option value="mtgase">MTGase / glycan</option>
+          </select></label>
+          <label class="field"><span>Antibody mass <span class="unit">(mg)</span></span><input id="cj_mass" type="number" step="0.1" value="10"></label>
+          <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="cj_mw" type="number" value="145000"></label>
+          <label class="field"><span>[mAb] in reaction <span class="unit">(g/L)</span></span><input id="cj_conc" type="number" step="0.1" value="5"></label>
+          <label class="field"><span>Free thiols / mAb <span class="unit">(blank = auto)</span></span><input id="cj_thiols" type="number" step="1" placeholder="auto"></label>
+          <label class="field"><span>Final DMSO <span class="unit">(% v/v)</span></span><input id="cj_dmso" type="number" step="1" value="10"></label>
+        </div>
+        <div id="cj_reagents"></div>
+        <div class="btnrow"><button class="ghost" onclick="addReagentRow()">+ Add reagent</button></div>
+      </div>
+      <div>
+        <div class="results" id="cj_out"></div>
+        <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('conj')">&#8862; Log to registry</button><span class="sub" id="log_conj_msg" style="align-self:center"></span></div>
+        <div class="note" id="cj_notes"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Ellman ============ -->
+<section class="panel" id="panel-ellman">
+  <div class="card">
+    <h2>Ellman's assay &mdash; free thiols per antibody</h2>
+    <p class="desc">DTNB reacts with free sulfhydryls to release TNB (&epsilon;412&nbsp;=&nbsp;14150&nbsp;M&#8315;&#185;cm&#8315;&#185;). The free-thiol-to-protein ratio confirms the degree of reduction before conjugation.</p>
+    <div class="formula">free thiols = (A412 / &epsilon;412) / (A280 / &epsilon;280,mAb)</div>
+    <div class="split">
+      <div><div class="grid">
+        <label class="field"><span>A412 <span class="unit">(AU)</span></span><input id="el_a412" type="number" step="0.0001" value="0.5"></label>
+        <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="el_a280" type="number" step="0.0001" value="0.6"></label>
+        <label class="field"><span>&epsilon;280 antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e280" type="number" value="203000"></label>
+        <label class="field"><span>&epsilon;412 TNB <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e412" type="number" value="14150"></label>
+      </div></div>
+      <div><div class="results" id="el_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('ellman')">&#8862; Log to registry</button><span class="sub" id="log_ellman_msg" style="align-self:center"></span></div></div>
+    </div>
+  </div>
+</section>
+
+
+
+<!-- ============ Yield & Formulation ============ -->
+<section class="panel" id="panel-yield">
+  <div class="card">
+    <h2>Yield &amp; Formulation</h2>
+    <p class="desc">From the final ADC concentration and volume: recovered mass, process yield vs. starting material, molar amount, and the volume needed to reach a target formulation concentration (positive&nbsp;=&nbsp;add diluent, negative&nbsp;=&nbsp;concentrate).</p>
+    <div class="formula">mass = C &middot; V   yield% = mass/mass&#8320; &times;100   V_target = mass / C_target</div>
+    <div class="split">
+      <div><div class="grid">
+        <label class="field"><span>Final [ADC] <span class="unit">(mg/mL)</span></span><input id="yl_conc" type="number" step="0.01" value="5.01"></label>
+        <label class="field"><span>Volume <span class="unit">(mL)</span></span><input id="yl_vol" type="number" step="0.1" value="2"></label>
+        <label class="field"><span>ADC MW <span class="unit">(g/mol)</span></span><input id="yl_mw" type="number" value="148765"></label>
+        <label class="field"><span>Starting mass <span class="unit">(mg, optional)</span></span><input id="yl_start" type="number" step="0.1" value="15"></label>
+        <label class="field"><span>Target [ADC] <span class="unit">(mg/mL, optional)</span></span><input id="yl_target" type="number" step="0.1" value="10"></label>
+      </div></div>
+      <div><div class="results" id="yl_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('yield')">&#8862; Log to registry</button><span class="sub" id="log_yield_msg" style="align-self:center"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Dye Library ============ -->
+<section class="panel" id="panel-dyes">
+  <div class="card">
+    <h2>Dye / Payload Library</h2>
+    <p class="desc">Reference extinction coefficients for the Alexa Fluor series and pHrodo dyes, as used by the UV/Vis DAR panel. Click a column header to sort; click a row to load it into the UV/Vis calculator.</p>
+    <input class="dye-search" id="dye_q" placeholder="Filter by name..." oninput="renderDyes()">
+    <div style="overflow-x:auto"><table class="dye" id="dye_table"></table></div>
+    <p class="sub">&epsilon;280 = &epsilon;&lambda;max &times; correction factor. pHrodo entries: dilute 1:1 with 1&nbsp;M H&#8322;SO&#8324; before reading.</p>
+  </div>
+</section>
+
+<!-- ============ ADC Registry ============ -->
+<section class="panel" id="panel-registry">
+  <div class="card">
+    <h2>ADC Registry</h2>
+    <p class="desc">A running log of every ADC preparation and assay. Each calculator panel has a <b>&#8862; Log to registry</b> button that captures its current inputs and computed results here. Records are stored in this browser (localStorage) and persist across sessions on this machine. Export to CSV or JSON for sharing or backup; import a JSON file to restore or merge a colleague's log.</p>
+
+    <div class="split" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="regbox">
+        <p class="sub" style="font-weight:600">Add / annotate an ADC identity</p>
+        <div class="grid cols3">
+          <label class="field"><span>ADC ID</span><input id="reg_id" placeholder="ADC-001"></label>
+          <label class="field"><span>Date</span><input id="reg_date" type="date"></label>
+          <label class="field"><span>Operator</span><input id="reg_operator" placeholder="initials"></label>
+        </div>
+        <label class="field" style="margin-top:8px"><span>Notes</span><input id="reg_notes" placeholder="lot, buffer, comments..."></label>
+        <p class="sub">These fields are attached to whatever you log next. The ADC&nbsp;ID ties multiple assays (UV, HIC, LC-MS&hellip;) to the same conjugate.</p>
+      </div>
+      <div class="regbox" id="reg_summary">
+        <p class="sub" style="font-weight:600">Summary</p>
+        <div id="reg_summary_body"></div>
+      </div>
+    </div>
+
+    <div class="btnrow" style="margin-bottom:12px">
+      <button class="act" onclick="exportRegistryCsv()">Export CSV</button>
+      <button class="ghost" onclick="exportRegistryJson()">Export JSON</button>
+      <button class="ghost" onclick="document.getElementById('reg_import').click()">Import JSON</button>
+      <input id="reg_import" type="file" accept="application/json,.json" style="display:none" onchange="importRegistryJson(this)">
+      <button class="ghost danger" onclick="clearRegistry()">Clear all</button>
+    </div>
+
+    <div style="overflow-x:auto"><table class="dye" id="reg_table"></table></div>
+    <p class="sub" id="reg_empty" style="display:none">No records yet. Compute a result on any panel, then click <b>Log to registry</b>.</p>
+  </div>
+</section>
+
+</main>
+<div class="footer">ADC Calculator &middot; calculation core validated against <span style="font-family:var(--mono)">Calculation_DAR_conjugation.xlsx</span> and the bioconjugation protocols &middot; <span id="selfcheck_badge"></span></div>
+
+<script>
+/*
+ * adc_core.js — pure calculation core for the ADC Calculator (ES module).
+ *
+ * Direct 1:1 port of adc_core.py. Zero DOM, zero I/O. Every function maps to a
+ * formula in adc_spec.md and is validated against the same golden values as the
+ * Python test suite (see selfCheck() at the bottom / node adc_core.js).
+ *
+ * Units: molar epsilon in M^-1 cm^-1; mass epsilon in (mg/mL)^-1 cm^-1.
+ */
+
+const ELLMAN_E412 = 14150.0;          // DTNB product at 412 nm (PDF p.10)
+const IGG1_INTERCHAIN_DISULFIDES = 4; // -> 8 free thiols on full reduction
+
+// ── 1. Extinction-coefficient conversions ─────────────────────────────────
+function epsMassToMolar(epsMass, mw) { return epsMass * mw; }
+function epsMolarToMass(epsMolar, mw) {
+  if (mw === 0) throw new Error("MW must be non-zero");
+  return epsMolar / mw;
+}
+
+// ── 2. DAR by UV/Vis (spreadsheet I16) ─────────────────────────────────────
+function darUV(a280, aLmax, eps280Mab, epsLmaxMab, eps280Lp, epsLmaxLp) {
+  if (a280 === 0) throw new Error("A280 must be non-zero");
+  const r = aLmax / a280;
+  const denom = r * eps280Lp - epsLmaxLp;
+  if (denom === 0) throw new Error("Degenerate optics: R*eps280_LP == eps_lmax_LP");
+  return (epsLmaxMab - r * eps280Mab) / denom;
+}
+
+// ── 3. ADC molecular properties ────────────────────────────────────────────
+function adcProperties(dar, mwMab, mwLp, eps280Mab, eps280Lp,
+                              a280 = null, dilutionFactor = 1.0) {
+  const mwAdc = mwMab + mwLp * dar;
+  const epsMolar = eps280Mab + dar * eps280Lp;
+  const epsMass = epsMolar / mwAdc;
+  let concMgml = null, concUM = null;
+  if (a280 !== null) {
+    concMgml = (a280 * dilutionFactor) / epsMass;
+    concUM = (concMgml / mwAdc) * 1e6;
+  }
+  return { dar, mwAdc, eps280AdcMolar: epsMolar, eps280AdcMass: epsMass, concMgml, concUM };
+}
+
+function concUnknownPayloadEps(a280, aLmax, eps280Lp, epsLmaxLp,
+                                      eps280MabMass, dilutionFactor = 1.0) {
+  const aLp280 = (aLmax * eps280Lp) / epsLmaxLp;
+  return ((a280 - aLp280) * dilutionFactor) / eps280MabMass;
+}
+
+// ── 4. Ellman's free-thiol assay (PDF p.10) ────────────────────────────────
+function ellmanFreeThiols(a412, a280, eps280Mab, eps412 = ELLMAN_E412) {
+  if (a280 === 0) throw new Error("A280 must be non-zero");
+  return (a412 / eps412) / (a280 / eps280Mab);
+}
+
+// ── 5. DAR by analytical HIC (PDF p.14-15) ─────────────────────────────────
+function _total(obj) { return Object.values(obj).reduce((s, v) => s + v, 0); }
+
+function darHIC(aucBySpecies) {
+  const total = _total(aucBySpecies);
+  if (total === 0) throw new Error("Total AUC must be non-zero");
+  let num = 0;
+  for (const [k, a] of Object.entries(aucBySpecies)) num += Number(k) * a;
+  return num / total;
+}
+
+function darSpeciesFractions(aucBySpecies) {
+  const total = _total(aucBySpecies);
+  if (total === 0) throw new Error("Total AUC must be non-zero");
+  const out = {};
+  for (const [k, a] of Object.entries(aucBySpecies)) out[k] = (a / total) * 100.0;
+  return out;
+}
+
+// ── 6. DAR by LC-MS (PDF p.17-18) ──────────────────────────────────────────
+function _weightedMean(intensityByK) {
+  const total = _total(intensityByK);
+  if (total === 0) throw new Error("Total intensity must be non-zero");
+  let num = 0;
+  for (const [k, i] of Object.entries(intensityByK)) num += Number(k) * i;
+  return num / total;
+}
+
+function darLcmsReduced(lightChain, heavyChain) {
+  return 2 * _weightedMean(lightChain) + 2 * _weightedMean(heavyChain);
+}
+
+function darLcmsIntact(intensityByK) { return _weightedMean(intensityByK); }
+
+function _chainStats(intensityByK) {
+  const sumI = _total(intensityByK);
+  if (sumI === 0) throw new Error("Total intensity must be non-zero");
+  let sumKI = 0;
+  for (const [k, i] of Object.entries(intensityByK)) sumKI += Number(k) * i;
+  const mean = sumKI / sumI;
+  return { sum_i: sumI, sum_ki: sumKI, mean: mean, contribution: 2 * mean };
+}
+
+function darLcmsReducedBreakdown(lightChain, heavyChain) {
+  const light = _chainStats(lightChain);
+  const heavy = _chainStats(heavyChain);
+  return { light: light, heavy: heavy,
+           dar: light.contribution + heavy.contribution };
+}
+
+// ── 7. Conjugation designer (PDF p.3-6) ────────────────────────────────────
+function molesFromMass(massMg, mw) { return (massMg / 1000.0) / mw; }
+
+function reagentVolumeUL(moles, stockConcMM) {
+  if (stockConcMM === 0) throw new Error("Stock concentration must be non-zero");
+  const liters = moles / (stockConcMM * 1e-3);
+  return liters * 1e6;
+}
+
+const ROUTE_NOTES = {
+  lysine: [
+    "Activated ester 5-20 equiv (optimize by screening).",
+    "mAb at 5 g/L; add 10% v/v 1.0 M NaHCO3; final 10% v/v DMSO.",
+    "2 h at 25 C; quench with L-lysine 100 equiv, 20 min.",
+  ],
+  cys_native: [
+    "1 equiv TCEP per disulfide; 6.0 equiv for full IgG1 reduction.",
+    "Maleimide 1.5 equiv per free thiol; +5 mM EDTA; 10% v/v DMSO.",
+    "Maleimide 1 h / 25 C; quench L-cysteine 100 equiv, 10 min.",
+  ],
+  cys_rebridge: [
+    "Full reduction: 6.0 equiv TCEP, 1 h / 37 C.",
+    "Rebridging reagent equivalents by screening; 16 h / 25 C.",
+    "Purify by preparative HIC for defined DAR.",
+  ],
+  thiomab: [
+    "Full reduction 10 equiv TCEP -> desalt to remove capping cysteines.",
+    "Reoxidize with dhAA 30 equiv, 4 h / 25 C.",
+    "Maleimide 1.5 equiv per free thiol, 1 h / 25 C.",
+  ],
+  mtgase: [
+    "PNGase F 10 uL/mg to deglycosylate; tag 80 equiv (e.g. azido-PEG3-amine).",
+    "MTGase 5.5 U/mg, 16 h / 25 C -> site-specific DAR 2.0.",
+    "Click reagent (e.g. DBCO-LP) 3.0 equiv, 6 h / 25 C.",
+  ],
+};
+
+function planConjugation({
+  route, massMabMg, mwMab = 145000.0, mabConcGPerL = 5.0,
+  reagents = [], freeThiolsPerMab = null, dmsoFraction = 0.10,
+}) {
+  const nMab = molesFromMass(massMabMg, mwMab);
+  if (freeThiolsPerMab === null) {
+    freeThiolsPerMab = ["cys_native", "cys_rebridge", "thiomab"].includes(route)
+      ? IGG1_INTERCHAIN_DISULFIDES * 2 : 0.0;
+  }
+  const nThiol = nMab * freeThiolsPerMab;
+  const baseVolUL = (massMabMg / mabConcGPerL) * 1000.0;
+
+  const additions = reagents.map((rg) => {
+    const basis = rg.basis || "mAb";
+    const nRef = basis === "thiol" ? nThiol : nMab;
+    const moles = rg.equiv * nRef;
+    return {
+      name: rg.name, equivalents: rg.equiv,
+      basis: basis === "thiol" ? "per free thiol" : "per mAb",
+      moles, stockConcMM: rg.stock_mM, volumeUL: reagentVolumeUL(moles, rg.stock_mM),
+    };
+  });
+
+  const reagentVol = additions.reduce((s, a) => s + a.volumeUL, 0);
+  const reactionVolume = Math.max(baseVolUL / (1 - dmsoFraction), baseVolUL + reagentVol);
+  return {
+    route, massMabMg, nMabNmol: nMab * 1e9, freeThiolsPerMab, additions,
+    reactionVolumeUL: reactionVolume, dmsoVolumeUL: reactionVolume * dmsoFraction,
+    notes: ROUTE_NOTES[route] || [],
+  };
+}
+
+// ── 8. Yield & formulation ─────────────────────────────────────────────────
+function yieldAndFormulation(concMgml, volumeML, mwAdc,
+                                    startingMassMg = null, targetConcMgml = null) {
+  const recovered = concMgml * volumeML;
+  const yieldPct = startingMassMg ? (recovered / startingMassMg) * 100.0 : null;
+  const molarNmol = (recovered / mwAdc) * 1e6;
+  let vFinal = null, vChange = null;
+  if (targetConcMgml) { vFinal = recovered / targetConcMgml; vChange = vFinal - volumeML; }
+  return { recoveredMassMg: recovered, yieldPct, molarAmountNmol: molarNmol,
+           vFinalML: vFinal, vChangeML: vChange };
+}
+
+// ── 10. Embedded dye / payload library (spreadsheet cols L-R) ───────────────
+const DYE_LIBRARY = [
+  { name: "AF350", mw: 410, e_lmax: 19000, cf280: 0.19, e280: 3610, lmax: 350, comment: null },
+  { name: "AF405", mw: 1028, e_lmax: 34000, cf280: 0.70, e280: 23800, lmax: 405, comment: null },
+  { name: "AF430", mw: 702, e_lmax: 16000, cf280: 0.28, e280: 4480, lmax: 430, comment: null },
+  { name: "AF488", mw: 643, e_lmax: 71000, cf280: 0.11, e280: 7810, lmax: 488, comment: null },
+  { name: "AF500", mw: 700, e_lmax: 71000, cf280: 0.18, e280: 12780, lmax: 500, comment: null },
+  { name: "AF514", mw: 714, e_lmax: 80000, cf280: 0.18, e280: 14400, lmax: 514, comment: null },
+  { name: "AF532", mw: 721, e_lmax: 81000, cf280: 0.09, e280: 7290, lmax: 532, comment: null },
+  { name: "AF546", mw: 1260, e_lmax: 112000, cf280: 0.12, e280: 13440, lmax: 546, comment: null },
+  { name: "AF555", mw: 1250, e_lmax: 150000, cf280: 0.08, e280: 12000, lmax: 555, comment: null },
+  { name: "AF568", mw: 792, e_lmax: 91300, cf280: 0.46, e280: 41998, lmax: 568, comment: null },
+  { name: "AF594", mw: 820, e_lmax: 90000, cf280: 0.56, e280: 50400, lmax: 594, comment: null },
+  { name: "AF610X", mw: 1285, e_lmax: 132000, cf280: 0.44, e280: 58080, lmax: 610, comment: null },
+  { name: "AF633", mw: 1200, e_lmax: 100000, cf280: 0.55, e280: 55000, lmax: 633, comment: null },
+  { name: "AF647", mw: 1300, e_lmax: 239000, cf280: 0.03, e280: 7170, lmax: 647, comment: null },
+  { name: "AF660", mw: 1100, e_lmax: 132000, cf280: 0.10, e280: 13200, lmax: 660, comment: null },
+  { name: "AF680", mw: 1150, e_lmax: 184000, cf280: 0.05, e280: 9200, lmax: 680, comment: null },
+  { name: "AF700", mw: 1400, e_lmax: 192000, cf280: 0.07, e280: 13440, lmax: 700, comment: null },
+  { name: "AF750", mw: 1300, e_lmax: 240000, cf280: 0.04, e280: 9600, lmax: 750, comment: null },
+  { name: "AF790", mw: 1750, e_lmax: 260000, cf280: 0.08, e280: 20800, lmax: 790, comment: null },
+  { name: "pHRodo deep red", mw: 1300, e_lmax: 140000, cf280: 0.33, e280: 46200, lmax: null, comment: "Dilute 1:1 with H2SO4 1M" },
+  { name: "pHRodo iFL Red", mw: 1000, e_lmax: 65000, cf280: 0.12, e280: 7800, lmax: 560, comment: "Dilute 1:1 with H2SO4 1M" },
+  { name: "pHRodo iFL Green", mw: 1000, e_lmax: 74500, cf280: 0.20, e280: 14900, lmax: null, comment: "Dilute 1:1 with H2SO4 1M" },
+];
+
+function getDye(name) {
+  const key = String(name).trim().toLowerCase();
+  return DYE_LIBRARY.find((d) => d.name.toLowerCase() === key) || null;
+}
+
+// ── ADC registry (pure): mirrors adc_core.py make_registry_record /
+//    registry_to_csv / summarize_registry. Persistence lives in the UI layer.
+const REGISTRY_FIELDS = ["id","date","operator","assay","route","dar","conc_mgml","conc_uM","free_thiols","notes"];
+const REGISTRY_NUMERIC = new Set(["dar","conc_mgml","conc_uM","free_thiols"]);
+function coerceNum(value){
+  if(value===null||value===undefined||typeof value==="boolean")return null;
+  if(typeof value==="number")return Number.isFinite(value)?value:null;
+  const t=String(value).trim(); if(t==="")return null;
+  const n=Number(t); return Number.isFinite(n)?n:null;
+}
+function makeRegistryRecord(fields){
+  const f=fields||{}, rec={};
+  for(const key of REGISTRY_FIELDS){
+    const val=f[key];
+    if(REGISTRY_NUMERIC.has(key))rec[key]=coerceNum(val);
+    else rec[key]=(val===null||val===undefined)?"":String(val).trim();
+  }
+  if(rec.id==="")throw new Error("registry record requires a non-empty 'id'");
+  return rec;
+}
+function fmtCell(v){ if(v===null||v===undefined)return ""; return String(v); }
+function csvEscape(c){ return /[",\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c; }
+function registryToCsv(records){
+  const lines=[REGISTRY_FIELDS.join(",")];
+  for(const r of records)lines.push(REGISTRY_FIELDS.map((k)=>csvEscape(fmtCell(r[k]))).join(","));
+  return lines.join("\n");
+}
+function summarizeRegistry(records){
+  const byAssay={},byId={},dars=[];
+  for(const r of records){
+    const a=r.assay||"(none)"; byAssay[a]=(byAssay[a]||0)+1;
+    const i=r.id||"(none)"; byId[i]=(byId[i]||0)+1;
+    const d=r.dar; if(typeof d==="number"&&Number.isFinite(d))dars.push(d);
+  }
+  const out={n_total:records.length,n_ids:Object.keys(byId).length,by_assay:byAssay,by_id:byId,
+    dar_n:dars.length,dar_mean:null,dar_sd:null,dar_min:null,dar_max:null};
+  if(dars.length){
+    const mean=dars.reduce((a,b)=>a+b,0)/dars.length;
+    out.dar_mean=mean; out.dar_min=Math.min(...dars); out.dar_max=Math.max(...dars);
+    out.dar_sd=dars.length>1?Math.sqrt(dars.reduce((a,x)=>a+(x-mean)**2,0)/(dars.length-1)):0.0;
+  }
+  return out;
+}
+
+// ── Self-check: same golden values as the Python test suite ────────────────
+function selfCheck() {
+  const REL = 1e-6;
+  const ok = (got, want, label) => {
+    const rel = want === 0 ? Math.abs(got) : Math.abs(got - want) / Math.abs(want);
+    if (rel > REL) throw new Error(`FAIL ${label}: got ${got}, want ${want}`);
+    return `PASS ${label}`;
+  };
+  const MW_MAB = 145000.0, EPS280_MAB = 203000.0, A280 = 7.4315, A_LMAX = 0.7827;
+  const MW_LP = 1559.62, EPS280_LP = 7287.0, EPS_LMAX_LP = 9624.0;
+  const R = A_LMAX / A280;
+  const results = [];
+  results.push(ok(epsMassToMolar(1.4, MW_MAB), 203000.0, "eps conv"));
+  results.push(ok(darUV(A280, A_LMAX, EPS280_MAB, R * EPS280_MAB, EPS280_LP, EPS_LMAX_LP), 0.0, "DAR case A"));
+  const darB = darUV(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP);
+  results.push(ok(darB, 2.4140809554780795, "DAR case B"));
+  const pA = adcProperties(0.0, MW_MAB, MW_LP, EPS280_MAB, EPS280_LP, A280, 1.0);
+  results.push(ok(pA.concMgml, 5.3082142857142856, "conc mg/mL case A"));
+  results.push(ok(pA.concUM, 36.608374384236456, "conc uM case A"));
+  const pB = adcProperties(darB, MW_MAB, MW_LP, EPS280_MAB, EPS280_LP, A280, 1.0);
+  results.push(ok(pB.mwAdc, 148765.04893978272, "MW_ADC case B"));
+  results.push(ok(pB.concMgml, 5.011743075614535, "conc mg/mL case B"));
+  results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0), 11.955241460541815, "Ellman"));
+  results.push(ok(darHIC({ 0: 5, 1: 15, 2: 45, 3: 25, 4: 10 }), 2.2, "HIC"));
+  results.push(ok(darLcmsReduced({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }), 5.2, "LC-MS reduced"));
+  const _bd = darLcmsReducedBreakdown({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
+  results.push(ok(_bd.light.contribution, 1.8, "LC-MS breakdown LC 2*mean"));
+  results.push(ok(_bd.heavy.contribution, 3.4, "LC-MS breakdown HC 2*mean"));
+  results.push(ok(_bd.dar, 5.2, "LC-MS breakdown DAR"));
+  const rr=[makeRegistryRecord({id:"ADC-001",assay:"uv",dar:"2.414"}),
+            makeRegistryRecord({id:"ADC-002",assay:"hic",dar:2.2}),
+            makeRegistryRecord({id:"ADC-002",assay:"lcms",dar:5.2})];
+  const rs=summarizeRegistry(rr);
+  results.push(ok(rs.dar_mean,3.271333333333333,"registry DAR mean"));
+  results.push(ok(rs.dar_sd,1.6736981010126448,"registry DAR sd"));
+  results.push("PASS registry (3 records)");
+  if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
+  results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
+  return results;
+}
+
+
+// Expose the pure core as a single namespace. The UI layer below calls ONLY
+// through `ADC.*` and never re-implements any formula.
+const ADC = {
+  epsMassToMolar, epsMolarToMass, darUV, adcProperties, concUnknownPayloadEps,
+  ellmanFreeThiols, darHIC, darSpeciesFractions, darLcmsReduced, darLcmsIntact,
+  darLcmsReducedBreakdown,
+  molesFromMass, reagentVolumeUL, planConjugation, yieldAndFormulation,
+  getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
+  makeRegistryRecord, registryToCsv, summarizeRegistry, REGISTRY_FIELDS,
+};
+
+/* ================= UI LAYER =================
+ * Reads/writes the DOM and formats output. ALL numeric work is delegated to
+ * ADC.* (the embedded pure core). No formula is reimplemented here.
+ */
+const $ = (id) => document.getElementById(id);
+const num = (id) => parseFloat($(id).value);
+const fmt = (x, d = 4) => (x === null || x === undefined || Number.isNaN(x))
+  ? "&mdash;" : Number(x).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: 0 });
+function rrow(k, v, cls = "") { return `<div class="rrow ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
+function placeholder(msg) { return `<div class="placeholder">${msg}</div>`; }
+
+// ---- DAR method segmented control ----
+function setDarMethod(m) {
+  document.querySelectorAll("#dar_methods button").forEach((b) =>
+    b.classList.toggle("active", b.dataset.method === m));
+  document.querySelectorAll("#panel-dar .method").forEach((el) =>
+    el.classList.toggle("active", el.id === "method-" + m));
+}
+
+// ---- Tabs ----
+document.querySelectorAll("#tabs button").forEach((b) => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#tabs button").forEach((x) => x.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    b.classList.add("active");
+    $("panel-" + b.dataset.tab).classList.add("active");
+  });
+});
+
+// ================= UV/Vis DAR =================
+function calcUV() {
+  const a280 = num("uv_a280"), almax = num("uv_almax"), df = num("uv_df");
+  const mwMab = num("uv_mwmab"), e280MabMass = num("uv_e280mab_mass");
+  const e280Mab = ADC.epsMassToMolar(e280MabMass, mwMab);
+  const elmaxMab = num("uv_elmaxmab");
+  const mwLp = num("uv_mwlp"), e280Lp = num("uv_e280lp"), elmaxLp = num("uv_elmaxlp");
+  const out = $("uv_out");
+  if (Number.isNaN(a280) || Number.isNaN(almax)) { out.innerHTML = placeholder("Enter A280 and A\u03bbmax"); return; }
+  try {
+    const dar = ADC.darUV(a280, almax, e280Mab, elmaxMab, e280Lp, elmaxLp);
+    const p = ADC.adcProperties(dar, mwMab, mwLp, e280Mab, e280Lp, a280, df);
+    const cUnk = ADC.concUnknownPayloadEps(a280, almax, e280Lp, elmaxLp, e280MabMass, df);
+    out.innerHTML = "<h3>Results</h3>"
+      + rrow("DAR (drug : antibody)", fmt(dar, 3), "primary")
+      + rrow("&epsilon;280 antibody (molar)", fmt(e280Mab, 0) + " M&#8315;&#185;cm&#8315;&#185;")
+      + rrow("ADC MW", fmt(p.mwAdc, 1) + " g/mol")
+      + rrow("&epsilon;280 ADC (molar)", fmt(p.eps280AdcMolar, 0) + " M&#8315;&#185;cm&#8315;&#185;")
+      + rrow("&epsilon;280 ADC (mass)", fmt(p.eps280AdcMass, 4) + " (mg/mL&middot;cm)&#8315;&#185;")
+      + rrow("[ADC]", fmt(p.concMgml, 4) + " mg/mL")
+      + rrow("[ADC]", fmt(p.concUM, 3) + " &micro;M", "primary")
+      + rrow("[ADC] if payload &epsilon; unknown", fmt(cUnk, 4) + " mg/mL");
+  } catch (e) { out.innerHTML = placeholder("Enter A280 and A\u03bbmax"); }
+}
+function uvPreset(kind) {
+  const v = (id, val) => ($(id).value = val);
+  v("uv_mwmab", 145000); v("uv_e280mab_mass", 1.4); v("uv_a280", 7.4315);
+  v("uv_almax", 0.7827); v("uv_df", 1); v("uv_mwlp", 1559.62);
+  v("uv_e280lp", 7287); v("uv_elmaxlp", 9624);
+  $("uv_dyesel").value = "";
+  v("uv_elmaxmab", kind === "sheet" ? (0.7827 / 7.4315 * 203000) : 0);
+  calcUV();
+}
+
+// ================= Conjugation Designer =================
+const REAGENT_PRESETS = {
+  cys_native: { conc: 5, dmso: 10, thiols: "", reagents: [
+    { name: "TCEP", equiv: 6, basis: "mAb", stock_mM: 5 },
+    { name: "maleimide-LP", equiv: 1.5, basis: "thiol", stock_mM: 10 },
+    { name: "L-cysteine (quench)", equiv: 100, basis: "thiol", stock_mM: 100 }]},
+  cys_rebridge: { conc: 5, dmso: 10, thiols: "", reagents: [
+    { name: "TCEP", equiv: 6, basis: "mAb", stock_mM: 5 },
+    { name: "rebridge-LP", equiv: 6, basis: "mAb", stock_mM: 10 }]},
+  thiomab: { conc: 5, dmso: 10, thiols: "", reagents: [
+    { name: "TCEP", equiv: 10, basis: "mAb", stock_mM: 5 },
+    { name: "dhAA (reoxidation)", equiv: 30, basis: "mAb", stock_mM: 50 },
+    { name: "maleimide-LP", equiv: 1.5, basis: "thiol", stock_mM: 10 }]},
+  lysine: { conc: 5, dmso: 10, thiols: 0, reagents: [
+    { name: "NHS-ester-LP", equiv: 10, basis: "mAb", stock_mM: 20 },
+    { name: "L-lysine (quench)", equiv: 100, basis: "mAb", stock_mM: 100 }]},
+  mtgase: { conc: 5, dmso: 10, thiols: 0, reagents: [
+    { name: "azido-tag", equiv: 80, basis: "mAb", stock_mM: 100 },
+    { name: "DBCO-LP (click)", equiv: 3, basis: "mAb", stock_mM: 10 }]},
+};
+function reagentRowHTML(r = { name: "", equiv: "", basis: "mAb", stock_mM: "" }) {
+  return `<div class="reagent-add reagent-row">
+    <div class="grid cols3" style="margin-bottom:0">
+      <label class="field" style="margin:0"><span>Reagent</span><input class="rg-name" value="${r.name}"></label>
+      <label class="field" style="margin:0"><span>Equivalents</span><input class="rg-eq" type="number" step="0.1" value="${r.equiv}"></label>
+      <label class="field" style="margin:0"><span>Basis</span><select class="rg-basis">
+        <option value="mAb"${r.basis === "mAb" ? " selected" : ""}>per mAb</option>
+        <option value="thiol"${r.basis === "thiol" ? " selected" : ""}>per free thiol</option></select></label>
+      <label class="field" style="margin:0"><span>Stock (mM)</span><input class="rg-stock" type="number" step="0.1" value="${r.stock_mM}"></label>
+    </div>
+    <div class="btnrow" style="margin-top:8px"><button class="act" style="background:#8896a4" onclick="this.closest('.reagent-row').remove();calcConj()">Remove</button></div>
+  </div>`;
+}
+function addReagentRow() { $("cj_reagents").insertAdjacentHTML("beforeend", reagentRowHTML()); bindConj(); }
+function readReagents() {
+  return [...document.querySelectorAll(".reagent-row")].map((row) => ({
+    name: row.querySelector(".rg-name").value || "reagent",
+    equiv: parseFloat(row.querySelector(".rg-eq").value) || 0,
+    basis: row.querySelector(".rg-basis").value,
+    stock_mM: parseFloat(row.querySelector(".rg-stock").value) || 0,
+  }));
+}
+function conjPreset(route) {
+  $("cj_route").value = route;
+  const p = REAGENT_PRESETS[route];
+  $("cj_conc").value = p.conc; $("cj_dmso").value = p.dmso; $("cj_thiols").value = p.thiols;
+  $("cj_reagents").innerHTML = p.reagents.map(reagentRowHTML).join("");
+  bindConj(); calcConj();
+}
+function calcConj() {
+  const route = $("cj_route").value;
+  const thiolsRaw = $("cj_thiols").value.trim();
+  const plan = ADC.planConjugation({
+    route, massMabMg: num("cj_mass"), mwMab: num("cj_mw"),
+    mabConcGPerL: num("cj_conc"), reagents: readReagents(),
+    freeThiolsPerMab: thiolsRaw === "" ? null : parseFloat(thiolsRaw),
+    dmsoFraction: num("cj_dmso") / 100,
+  });
+  let html = "<h3>Reaction plan</h3>"
+    + rrow("Antibody amount", fmt(plan.nMabNmol, 2) + " nmol")
+    + rrow("Free thiols / mAb", fmt(plan.freeThiolsPerMab, 0))
+    + rrow("Reaction volume", fmt(plan.reactionVolumeUL, 1) + " &micro;L")
+    + rrow("DMSO (target)", fmt(plan.dmsoVolumeUL, 1) + " &micro;L");
+  plan.additions.forEach((a) => {
+    html += rrow(`${a.name} <span class="sub">(${a.equivalents} eq ${a.basis})</span>`,
+      fmt(a.volumeUL, 2) + " &micro;L");
+  });
+  $("cj_out").innerHTML = html;
+  $("cj_notes").innerHTML = "<b>Protocol notes</b><ul>" + plan.notes.map((n) => `<li>${n}</li>`).join("") + "</ul>";
+}
+function bindConj() {
+  document.querySelectorAll("#panel-conj input,#panel-conj select").forEach((el) => {
+    el.oninput = calcConj; el.onchange = calcConj;
+  });
+}
+
+// ================= Ellman =================
+function calcEllman() {
+  try {
+    const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"));
+    $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Free thiols per antibody", fmt(t, 3), "primary")
+      + rrow("Interpretation", t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction");
+  } catch (e) { $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
+}
+
+// ================= HIC =================
+let hicSpecies = [{ k: 0, a: 5 }, { k: 1, a: 15 }, { k: 2, a: 45 }, { k: 3, a: 25 }, { k: 4, a: 10 }];
+function renderHic() {
+  $("hic_rows").innerHTML = hicSpecies.map((s, i) => `
+    <div class="speciesrow">
+      <input type="number" value="${s.k}" onchange="hicSpecies[${i}].k=parseInt(this.value)||0;calcHic()" title="DAR value">
+      <input type="number" value="${s.a}" oninput="hicSpecies[${i}].a=parseFloat(this.value)||0;calcHic()" title="peak area">
+      <button onclick="hicSpecies.splice(${i},1);renderHic();calcHic()">&times;</button>
+    </div>`).join("");
+}
+function addHicRow() { hicSpecies.push({ k: hicSpecies.length, a: 0 }); renderHic(); calcHic(); }
+function calcHic() {
+  const map = {}; hicSpecies.forEach((s) => { map[s.k] = (map[s.k] || 0) + s.a; });
+  try {
+    const dar = ADC.darHIC(map), frac = ADC.darSpeciesFractions(map);
+    let html = "<h3>Results</h3>" + rrow("Average DAR", fmt(dar, 3), "primary") + "<h3 style='margin-top:14px'>Species distribution</h3>";
+    Object.keys(frac).sort((a, b) => a - b).forEach((k) => { html += rrow("DAR " + k, fmt(frac[k], 1) + " %"); });
+    $("hic_out").innerHTML = html;
+  } catch (e) { $("hic_out").innerHTML = placeholder("Enter peak areas for at least one species"); }
+}
+
+// ================= LC-MS =================
+let lcmsMode = "reduced";
+let lcLC = [{ k: 0, i: 10 }, { k: 1, i: 90 }];
+let lcHC = [{ k: 0, i: 5 }, { k: 1, i: 20 }, { k: 2, i: 75 }];
+let lcIntact = [{ k: 0, i: 10 }, { k: 2, i: 30 }, { k: 4, i: 60 }];
+function setLcmsMode(m) {
+  lcmsMode = m;
+  $("lc_m_reduced").style.background = m === "reduced" ? "var(--accent-soft)" : "#fff";
+  $("lc_m_reduced").style.color = m === "reduced" ? "var(--accent)" : "var(--muted)";
+  $("lc_m_intact").style.background = m === "intact" ? "var(--accent-soft)" : "#fff";
+  $("lc_m_intact").style.color = m === "intact" ? "var(--accent)" : "var(--muted)";
+  $("lcms_formula").textContent = m === "reduced"
+    ? "DAR = 2\u00b7[\u03a3 k\u00b7I_LC / \u03a3 I_LC] + 2\u00b7[\u03a3 l\u00b7I_HC / \u03a3 I_HC]"
+    : "DAR = \u03a3 k\u00b7I(k) / \u03a3 I(k)";
+  renderLcms();
+}
+function chainBlock(title, arr, name) {
+  return `<p class="sub" style="font-weight:600;margin-top:4px">${title}</p>` + arr.map((s, i) => `
+    <div class="speciesrow">
+      <input type="number" value="${s.k}" onchange="${name}[${i}].k=parseInt(this.value)||0;calcLcms()" title="drugs">
+      <input type="number" value="${s.i}" oninput="${name}[${i}].i=parseFloat(this.value)||0;calcLcms()" title="intensity">
+      <button onclick="${name}.splice(${i},1);renderLcms();calcLcms()">&times;</button>
+    </div>`).join("")
+    + `<div class="btnrow"><button class="ghost" onclick="${name}.push({k:${name}.length,i:0});renderLcms();calcLcms()">+ ${title} species</button></div>`;
+}
+function renderLcms() {
+  $("lcms_inputs").innerHTML = lcmsMode === "reduced"
+    ? chainBlock("Light chain", lcLC, "lcLC") + chainBlock("Heavy chain", lcHC, "lcHC")
+    : chainBlock("Intact species", lcIntact, "lcIntact");
+  calcLcms();
+}
+function toMap(arr) { const m = {}; arr.forEach((s) => { m[s.k] = (m[s.k] || 0) + s.i; }); return m; }
+function calcLcms() {
+  try {
+    let html;
+    if (lcmsMode === "reduced") {
+      const bd = ADC.darLcmsReducedBreakdown(toMap(lcLC), toMap(lcHC));
+      const chainRows = (label, s) =>
+          rrow(label + " &Sigma;I (total intensity)", fmt(s.sum_i, 1))
+        + rrow(label + " &Sigma;k&middot;I (weighted)", fmt(s.sum_ki, 1))
+        + rrow(label + " mean (drugs/chain)", fmt(s.mean, 4))
+        + rrow(label + " contribution (2&times;mean)", fmt(s.contribution, 4));
+      html = rrow("DAR", fmt(bd.dar, 3), "primary")
+        + rrow("Mode", "denaturing + reducing")
+        + "<div class=\"rrow\" style=\"border:0;padding-top:6px\"><span class=\"k\" style=\"font-weight:600\">Per-chain breakdown</span><span class=\"v\"></span></div>"
+        + chainRows("Light chain", bd.light)
+        + chainRows("Heavy chain", bd.heavy)
+        + rrow("DAR = 2&middot;mean&#8202;LC + 2&middot;mean&#8202;HC",
+               fmt(bd.light.contribution, 4) + " + " + fmt(bd.heavy.contribution, 4)
+               + " = " + fmt(bd.dar, 4));
+    } else {
+      const dar = ADC.darLcmsIntact(toMap(lcIntact));
+      html = rrow("DAR", fmt(dar, 3), "primary")
+        + rrow("Mode", "non-reducing / native");
+    }
+    $("lcms_out").innerHTML = "<h3>Results</h3>" + html;
+  } catch (e) { $("lcms_out").innerHTML = placeholder("Enter peak intensities for each chain"); }
+}
+
+// ================= Yield =================
+function calcYield() {
+  const start = $("yl_start").value.trim(), target = $("yl_target").value.trim();
+  const y = ADC.yieldAndFormulation(num("yl_conc"), num("yl_vol"), num("yl_mw"),
+    start === "" ? null : parseFloat(start), target === "" ? null : parseFloat(target));
+  let html = "<h3>Results</h3>"
+    + rrow("Recovered mass", fmt(y.recoveredMassMg, 3) + " mg", "primary")
+    + rrow("Molar amount", fmt(y.molarAmountNmol, 2) + " nmol");
+  if (y.yieldPct !== null) html += rrow("Process yield", fmt(y.yieldPct, 1) + " %", "primary");
+  if (y.vFinalML !== null) {
+    html += rrow("Volume at target", fmt(y.vFinalML, 3) + " mL");
+    html += rrow(y.vChangeML >= 0 ? "Diluent to add" : "Concentrate by",
+      fmt(Math.abs(y.vChangeML), 3) + " mL");
+  }
+  $("yl_out").innerHTML = html;
+}
+
+// ================= Dye library =================
+let dyeSort = { key: "lmax", dir: 1 };
+function renderDyes() {
+  const q = ($("dye_q").value || "").toLowerCase();
+  let rows = ADC.DYE_LIBRARY.filter((d) => d.name.toLowerCase().includes(q));
+  rows.sort((a, b) => {
+    let va = a[dyeSort.key], vb = b[dyeSort.key];
+    va = va === null ? -Infinity : va; vb = vb === null ? -Infinity : vb;
+    if (typeof va === "string") return dyeSort.dir * va.localeCompare(vb);
+    return dyeSort.dir * (va - vb);
+  });
+  const cols = [["name", "Name", false], ["mw", "MW", true], ["e_lmax", "\u03b5\u03bbmax (M\u207b\u00b9cm\u207b\u00b9)", true],
+    ["cf280", "CF@280", true], ["e280", "\u03b5280 (M\u207b\u00b9cm\u207b\u00b9)", true], ["lmax", "\u03bbmax (nm)", true], ["comment", "Note", false]];
+  let html = "<thead><tr>" + cols.map((c) => `<th class="${c[2] ? "num" : ""}" onclick="sortDyes('${c[0]}')">${c[1]}</th>`).join("") + "</tr></thead><tbody>";
+  rows.forEach((d) => {
+    html += `<tr onclick='loadDyeToUV(${JSON.stringify(d)})' title="load into UV/Vis calculator">
+      <td>${d.name}</td><td class="num">${d.mw}</td><td class="num">${d.e_lmax.toLocaleString()}</td>
+      <td class="num">${d.cf280}</td><td class="num">${d.e280.toLocaleString()}</td>
+      <td class="num">${d.lmax ?? "&mdash;"}</td><td>${d.comment ?? ""}</td></tr>`;
+  });
+  $("dye_table").innerHTML = html + "</tbody>";
+}
+function sortDyes(k) { dyeSort.dir = dyeSort.key === k ? -dyeSort.dir : 1; dyeSort.key = k; renderDyes(); }
+function loadDyeToUV(d) {
+  $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax;
+  $("uv_dyesel").value = d.name;
+  document.querySelector('#tabs button[data-tab="dar"]').click();
+  setDarMethod("uv");
+  calcUV();
+}
+function populateDyeSelect() {
+  const sel = $("uv_dyesel");
+  ADC.DYE_LIBRARY.forEach((d) => {
+    const o = document.createElement("option"); o.value = d.name; o.textContent = `${d.name} (\u03bbmax ${d.lmax ?? "?"})`;
+    sel.appendChild(o);
+  });
+  sel.onchange = () => { const d = ADC.getDye(sel.value); if (d) { $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax; calcUV(); } };
+}
+
+// ================= ADC Registry (UI) =================
+// Persistence: localStorage on this browser. All record shaping / CSV / stats
+// go through the pure core (ADC.makeRegistryRecord / registryToCsv / summarizeRegistry).
+const REG_KEY = "adc_registry_v1";
+let registry = [];
+function loadRegistry() {
+  try { registry = JSON.parse(localStorage.getItem(REG_KEY) || "[]"); }
+  catch (e) { registry = []; }
+  if (!Array.isArray(registry)) registry = [];
+}
+function persistRegistry() {
+  try { localStorage.setItem(REG_KEY, JSON.stringify(registry)); }
+  catch (e) { alert("Could not save to browser storage: " + e.message); }
+}
+// Recompute the key numbers for a panel from the CORE (never scrape the DOM text).
+function capturePanel(panel) {
+  if (panel === "uv") {
+    const a280 = num("uv_a280"), almax = num("uv_almax"), df = num("uv_df");
+    const mwMab = num("uv_mwmab"), e280Mab = ADC.epsMassToMolar(num("uv_e280mab_mass"), mwMab);
+    const dar = ADC.darUV(a280, almax, e280Mab, num("uv_elmaxmab"), num("uv_e280lp"), num("uv_elmaxlp"));
+    const pr = ADC.adcProperties(dar, mwMab, num("uv_mwlp"), e280Mab, num("uv_e280lp"), a280, df);
+    return { assay: "uv", dar, conc_mgml: pr.concMgml, conc_uM: pr.concUM };
+  }
+  if (panel === "conj") {
+    const route = $("cj_route").value;
+    const thiolsRaw = $("cj_thiols").value.trim();
+    const plan = ADC.planConjugation({ route, massMabMg: num("cj_mass"), mwMab: num("cj_mw"),
+      mabConcGPerL: num("cj_conc"), reagents: readReagents(),
+      freeThiolsPerMab: thiolsRaw === "" ? null : parseFloat(thiolsRaw), dmsoFraction: num("cj_dmso") / 100 });
+    return { assay: "conjugation", route, free_thiols: plan.freeThiolsPerMab,
+      autonote: `${plan.nMabNmol.toFixed(2)} nmol mAb, rxn ${plan.reactionVolumeUL.toFixed(1)} uL` };
+  }
+  if (panel === "ellman") {
+    const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"));
+    return { assay: "ellman", free_thiols: t };
+  }
+  if (panel === "hic") {
+    const map = {}; hicSpecies.forEach((x) => { map[x.k] = (map[x.k] || 0) + x.a; });
+    return { assay: "hic", dar: ADC.darHIC(map) };
+  }
+  if (panel === "lcms") {
+    const dar = lcmsMode === "reduced" ? ADC.darLcmsReduced(toMap(lcLC), toMap(lcHC)) : ADC.darLcmsIntact(toMap(lcIntact));
+    return { assay: "lcms", dar };
+  }
+  if (panel === "yield") {
+    const start = $("yl_start").value.trim(), target = $("yl_target").value.trim();
+    const y = ADC.yieldAndFormulation(num("yl_conc"), num("yl_vol"), num("yl_mw"),
+      start === "" ? null : parseFloat(start), target === "" ? null : parseFloat(target));
+    return { assay: "yield", conc_mgml: num("yl_conc"),
+      autonote: `recovered ${y.recoveredMassMg.toFixed(3)} mg${y.yieldPct !== null ? ", yield " + y.yieldPct.toFixed(1) + "%" : ""}` };
+  }
+  return { assay: panel };
+}
+function logToRegistry(panel) {
+  const idRaw = $("reg_id").value.trim();
+  const id = idRaw || ("ADC-" + String(registry.length + 1).padStart(3, "0"));
+  const msg = $("log_" + panel + "_msg");
+  let cap;
+  try { cap = capturePanel(panel); }
+  catch (e) { if (msg) { msg.textContent = "compute a valid result first"; msg.style.color = "var(--warn)"; } return; }
+  const userNote = $("reg_notes").value.trim();
+  const notes = [userNote, cap.autonote].filter(Boolean).join(" | ");
+  const today = new Date().toISOString().slice(0, 10);
+  const rec = ADC.makeRegistryRecord({
+    id, date: $("reg_date").value || today, operator: $("reg_operator").value,
+    assay: cap.assay, route: cap.route, dar: cap.dar,
+    conc_mgml: cap.conc_mgml, conc_uM: cap.conc_uM, free_thiols: cap.free_thiols, notes,
+  });
+  registry.push(rec);
+  persistRegistry();
+  renderRegistry();
+  if (msg) { msg.textContent = "logged as " + id; msg.style.color = "var(--accent)";
+    setTimeout(() => { msg.textContent = ""; }, 4000); }
+  if (!idRaw) $("reg_id").value = id;
+}
+function deleteRegRow(i) { registry.splice(i, 1); persistRegistry(); renderRegistry(); }
+function clearRegistry() {
+  if (!registry.length) return;
+  if (confirm("Delete all " + registry.length + " registry records? This cannot be undone.")) {
+    registry = []; persistRegistry(); renderRegistry();
+  }
+}
+function renderRegSummary() {
+  const s = ADC.summarizeRegistry(registry);
+  const fmtS = (x, d) => (x === null || x === undefined) ? "&mdash;" : Number(x).toFixed(d);
+  const assayStr = Object.keys(s.by_assay).map((k) => `${k} ${s.by_assay[k]}`).join(", ") || "&mdash;";
+  $("reg_summary_body").innerHTML =
+      rrow("Records", s.n_total) + rrow("Distinct ADC IDs", s.n_ids)
+    + rrow("By assay", assayStr)
+    + rrow("DAR n / mean / SD", `${s.dar_n} / ${fmtS(s.dar_mean, 3)} / ${fmtS(s.dar_sd, 3)}`)
+    + rrow("DAR range", s.dar_n ? `${fmtS(s.dar_min, 2)} &ndash; ${fmtS(s.dar_max, 2)}` : "&mdash;");
+}
+function renderRegistry() {
+  const t = $("reg_table");
+  const cols = ADC.REGISTRY_FIELDS;
+  if (!registry.length) {
+    t.innerHTML = ""; $("reg_empty").style.display = ""; renderRegSummary(); return;
+  }
+  $("reg_empty").style.display = "none";
+  const numCols = new Set(["dar", "conc_mgml", "conc_uM", "free_thiols"]);
+  const head = "<tr>" + cols.map((c) => `<th${numCols.has(c) ? " class='num'" : ""}>${c}</th>`).join("") + "<th></th></tr>";
+  const body = registry.map((r, i) => "<tr>" + cols.map((c) => {
+    let v = r[c];
+    if (v === null || v === undefined || v === "") v = "";
+    else if (numCols.has(c) && typeof v === "number") v = (v === Math.round(v)) ? String(v) : v.toFixed(3);
+    return `<td${numCols.has(c) ? " class='num'" : ""}>${String(v).replace(/</g, "&lt;")}</td>`;
+  }).join("") + `<td><button class="delrow" title="delete" onclick="deleteRegRow(${i})">&times;</button></td></tr>`).join("");
+  t.innerHTML = head + body;
+  renderRegSummary();
+}
+function downloadBlob(text, filename, type) {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+function stamp() { return new Date().toISOString().slice(0, 10); }
+function exportRegistryCsv() {
+  if (!registry.length) { alert("Registry is empty."); return; }
+  downloadBlob(ADC.registryToCsv(registry), `adc_registry_${stamp()}.csv`, "text/csv");
+}
+function exportRegistryJson() {
+  if (!registry.length) { alert("Registry is empty."); return; }
+  downloadBlob(JSON.stringify(registry, null, 2), `adc_registry_${stamp()}.json`, "application/json");
+}
+function importRegistryJson(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      if (!Array.isArray(data)) throw new Error("file is not a JSON array of records");
+      const cleaned = data.map((d) => ADC.makeRegistryRecord(d));
+      const mode = registry.length
+        ? (confirm(`Import ${cleaned.length} records.\nOK = merge with existing ${registry.length}, Cancel = replace all.`) ? "merge" : "replace")
+        : "merge";
+      registry = mode === "merge" ? registry.concat(cleaned) : cleaned;
+      persistRegistry(); renderRegistry();
+      alert(`Imported ${cleaned.length} records (${mode}).`);
+    } catch (e) { alert("Import failed: " + e.message); }
+    input.value = "";
+  };
+  reader.readAsText(file);
+}
+
+// ================= Init =================
+function initBindings() {
+  document.querySelectorAll("#method-uv input").forEach((el) => (el.oninput = calcUV));
+  document.querySelectorAll("#panel-ellman input").forEach((el) => (el.oninput = calcEllman));
+  document.querySelectorAll("#panel-yield input").forEach((el) => (el.oninput = calcYield));
+  $("cj_route").onchange = () => conjPreset($("cj_route").value);
+}
+window.addEventListener("DOMContentLoaded", () => {
+  populateDyeSelect();
+  initBindings();
+  conjPreset("thiomab");
+  renderHic(); calcHic();
+  setLcmsMode("reduced");
+  setDarMethod("uv");
+  renderDyes();
+  calcUV(); calcEllman(); calcYield();
+  loadRegistry(); renderRegistry();
+  try { $("reg_date").value = new Date().toISOString().slice(0, 10); } catch (e) {}
+  // Run the core self-check and surface the badge in the footer.
+  try {
+    const res = ADC.selfCheck();
+    $("selfcheck_badge").innerHTML = "core self-check: " + res.length + "/" + res.length + " golden values \u2713";
+    $("selfcheck_badge").style.color = "#2b7a78";
+  } catch (e) {
+    $("selfcheck_badge").innerHTML = "core self-check FAILED: " + e.message;
+    $("selfcheck_badge").style.color = "#b4690e";
+  }
+});
+
+</script>
+</body>
+</html>

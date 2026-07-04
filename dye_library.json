@@ -1,0 +1,200 @@
+[
+  {
+    "name": "AF350",
+    "mw": 410,
+    "e_lmax": 19000,
+    "cf280": 0.19,
+    "e280": 3610,
+    "lmax": 350,
+    "comment": null
+  },
+  {
+    "name": "AF405",
+    "mw": 1028,
+    "e_lmax": 34000,
+    "cf280": 0.7,
+    "e280": 23800,
+    "lmax": 405,
+    "comment": null
+  },
+  {
+    "name": "AF430",
+    "mw": 702,
+    "e_lmax": 16000,
+    "cf280": 0.28,
+    "e280": 4480,
+    "lmax": 430,
+    "comment": null
+  },
+  {
+    "name": "AF488",
+    "mw": 643,
+    "e_lmax": 71000,
+    "cf280": 0.11,
+    "e280": 7810,
+    "lmax": 488,
+    "comment": null
+  },
+  {
+    "name": "AF500",
+    "mw": 700,
+    "e_lmax": 71000,
+    "cf280": 0.18,
+    "e280": 12780,
+    "lmax": 500,
+    "comment": null
+  },
+  {
+    "name": "AF514",
+    "mw": 714,
+    "e_lmax": 80000,
+    "cf280": 0.18,
+    "e280": 14400,
+    "lmax": 514,
+    "comment": null
+  },
+  {
+    "name": "AF532",
+    "mw": 721,
+    "e_lmax": 81000,
+    "cf280": 0.09,
+    "e280": 7290,
+    "lmax": 532,
+    "comment": null
+  },
+  {
+    "name": "AF546",
+    "mw": 1260,
+    "e_lmax": 112000,
+    "cf280": 0.12,
+    "e280": 13440,
+    "lmax": 546,
+    "comment": null
+  },
+  {
+    "name": "AF555",
+    "mw": 1250,
+    "e_lmax": 150000,
+    "cf280": 0.08,
+    "e280": 12000,
+    "lmax": 555,
+    "comment": null
+  },
+  {
+    "name": "AF568",
+    "mw": 792,
+    "e_lmax": 91300,
+    "cf280": 0.46,
+    "e280": 41998,
+    "lmax": 568,
+    "comment": null
+  },
+  {
+    "name": "AF594",
+    "mw": 820,
+    "e_lmax": 90000,
+    "cf280": 0.56,
+    "e280": 50400.00000000001,
+    "lmax": 594,
+    "comment": null
+  },
+  {
+    "name": "AF610X",
+    "mw": 1285,
+    "e_lmax": 132000,
+    "cf280": 0.44,
+    "e280": 58080,
+    "lmax": 610,
+    "comment": null
+  },
+  {
+    "name": "AF633",
+    "mw": 1200,
+    "e_lmax": 100000,
+    "cf280": 0.55,
+    "e280": 55000.00000000001,
+    "lmax": 633,
+    "comment": null
+  },
+  {
+    "name": "AF647",
+    "mw": 1300,
+    "e_lmax": 239000,
+    "cf280": 0.03,
+    "e280": 7170,
+    "lmax": 647,
+    "comment": null
+  },
+  {
+    "name": "AF660",
+    "mw": 1100,
+    "e_lmax": 132000,
+    "cf280": 0.1,
+    "e280": 13200,
+    "lmax": 660,
+    "comment": null
+  },
+  {
+    "name": "AF680",
+    "mw": 1150,
+    "e_lmax": 184000,
+    "cf280": 0.05,
+    "e280": 9200,
+    "lmax": 680,
+    "comment": null
+  },
+  {
+    "name": "AF700",
+    "mw": 1400,
+    "e_lmax": 192000,
+    "cf280": 0.07,
+    "e280": 13440.000000000002,
+    "lmax": 700,
+    "comment": null
+  },
+  {
+    "name": "AF750",
+    "mw": 1300,
+    "e_lmax": 240000,
+    "cf280": 0.04,
+    "e280": 9600,
+    "lmax": 750,
+    "comment": null
+  },
+  {
+    "name": "AF790",
+    "mw": 1750,
+    "e_lmax": 260000,
+    "cf280": 0.08,
+    "e280": 20800,
+    "lmax": 790,
+    "comment": null
+  },
+  {
+    "name": "pHRodo deep red",
+    "mw": 1300,
+    "e_lmax": 140000,
+    "cf280": 0.33,
+    "e280": 46200,
+    "lmax": null,
+    "comment": "Dilute 1:1 with H2SO4 1M"
+  },
+  {
+    "name": "pHRodo iFL Red",
+    "mw": 1000,
+    "e_lmax": 65000,
+    "cf280": 0.12,
+    "e280": 7800,
+    "lmax": 560,
+    "comment": "Dilute 1:1 with H2SO4 1M"
+  },
+  {
+    "name": "pHRodo iFL Green",
+    "mw": 1000,
+    "e_lmax": 74500,
+    "cf280": 0.2,
+    "e280": 14900,
+    "lmax": null,
+    "comment": "Dilute 1:1 with H2SO4 1M"
+  }
+]
