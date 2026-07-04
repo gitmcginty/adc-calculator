@@ -6,124 +6,158 @@
 <title>ADC Calculator</title>
 <style>
 :root{
-  --bg:#ffffff; --panel:#ffffff; --ink:#101418; --muted:#68727d;
-  --line:#e3e7eb; --field:#f5f7f9; --accent:#0a66ff; --accent-soft:#eaf1ff;
-  --warn:#9a5b00; --result:#f7f9fb;
+  --bg:#fafafa; --panel:#ffffff; --ink:#1a1d21; --muted:#66707b; --faint:#9aa1ab;
+  --line:#e7e9ec; --field:#f6f7f8; --result:#f6f7f8;
+  --accent:#AB3635; --accent-soft:#f7ebeb; --accent-hover:#8f2b2a;
+  --warn:#9a5b00; --danger:#b3261e; --danger-soft:#fbecea;
   --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
   --s1:8px; --s2:16px; --s3:24px; --s4:32px;
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-  background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
-header{background:var(--panel);border-bottom:1px solid var(--line);padding:var(--s3) 0}
-header h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.2px}
-header p{margin:6px 0 0;font-size:13px;color:var(--muted);max-width:70ch}
-.wrap{max-width:1120px;margin:0 auto;padding:0 var(--s3)}
-nav.tabs{display:flex;flex-wrap:wrap;gap:var(--s3);background:var(--panel);border-bottom:1px solid var(--line);
-  padding:0 var(--s3);position:sticky;top:0;z-index:20}
-nav.tabs button{background:none;border:none;padding:14px 0;font-size:14px;cursor:pointer;color:var(--muted);
-  border-bottom:2px solid transparent;font-weight:500;white-space:nowrap}
+  background:var(--bg);color:var(--ink);font-size:13.5px;line-height:1.55;-webkit-font-smoothing:antialiased}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:22px 0}
+header h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+header h1::before{content:"";width:10px;height:20px;border-radius:3px;background:var(--accent);display:inline-block}
+header p{margin:5px 0 0;font-size:12.5px;color:var(--muted);max-width:76ch}
+.wrap{max-width:1140px;margin:0 auto;padding:0 var(--s3)}
+nav.tabs{display:flex;flex-wrap:wrap;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:20}
+nav.tabs button{background:none;border:none;padding:13px 15px;font-size:13px;cursor:pointer;color:var(--muted);
+  border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;transition:color .12s}
 nav.tabs button:hover{color:var(--ink)}
 nav.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
 main{padding:var(--s3) 0 64px}
 .panel{display:none}
 .panel.active{display:block}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:var(--s3);margin-bottom:var(--s2)}
-.card h2{margin:0 0 var(--s1);font-size:18px;font-weight:600}
-.card .desc{color:var(--muted);font-size:13px;margin:0 0 var(--s2);max-width:70ch}
-.formula{font-family:var(--mono);font-size:12px;background:var(--field);color:var(--ink);
-  padding:var(--s1) var(--s2);border-radius:6px;margin:0 0 var(--s2);overflow-x:auto;white-space:pre;border:1px solid var(--line)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;margin-bottom:16px;
+  box-shadow:0 1px 2px rgba(16,20,24,.03)}
+.card h2{margin:0 0 5px;font-size:15.5px;font-weight:600;letter-spacing:-.01em}
+.card .desc{color:var(--muted);font-size:12.5px;margin:0 0 20px;max-width:74ch;line-height:1.6}
+.formula{font-family:var(--mono);font-size:11.5px;background:var(--result);color:var(--muted);
+  padding:9px 13px;border-radius:8px;margin:0 0 20px;overflow-x:auto;white-space:pre;border:1px solid var(--line)}
 /* segmented control */
-.segmented{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:var(--s3)}
-.segmented button{background:var(--panel);border:none;border-left:1px solid var(--line);padding:8px 18px;font-size:14px;
-  cursor:pointer;color:var(--muted);font-weight:500}
+.segmented{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:var(--s2);background:var(--panel)}
+.segmented button{background:transparent;border:none;border-left:1px solid var(--line);padding:9px 20px;font-size:13px;
+  cursor:pointer;color:var(--muted);font-weight:500;transition:background .12s,color .12s}
 .segmented button:first-child{border-left:none}
-.segmented button.active{background:var(--accent);color:#fff}
+.segmented button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.segnote{font-size:11.5px;color:var(--faint);margin-left:12px;align-self:center}
 .method{display:none}
 .method.active{display:block}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2) var(--s3)}
 .grid.cols3{grid-template-columns:1fr 1fr 1fr}
 @media(max-width:760px){.grid,.grid.cols3{grid-template-columns:1fr}}
-.split{display:grid;grid-template-columns:1fr 1fr;gap:var(--s3)}
+.split{display:grid;grid-template-columns:1.05fr .95fr;gap:var(--s4)}
 @media(max-width:860px){.split{grid-template-columns:1fr}}
 label.field{display:block;margin-bottom:var(--s2)}
-label.field span{display:block;font-size:13px;color:var(--muted);margin-bottom:4px;font-weight:500}
-label.field .unit{color:#9aa4ae;font-weight:400}
-input,select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px;
-  font-family:var(--mono);background:var(--panel);color:var(--ink)}
+label.field span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:500}
+label.field .unit{color:var(--faint);font-weight:400}
+input,select{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-size:13px;
+  font-family:var(--mono);background:var(--panel);color:var(--ink);transition:border-color .12s,box-shadow .12s}
 input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
-input[readonly]{background:var(--field);color:var(--muted);cursor:default;border-style:dashed}
+input[readonly]{background:var(--result);color:var(--faint);cursor:default;border-style:dashed}
 select{font-family:inherit}
-details.advanced{border:1px solid var(--line);border-radius:8px;padding:0;margin-bottom:var(--s2)}
-details.advanced>summary{cursor:pointer;padding:12px var(--s2);font-size:13px;font-weight:500;color:var(--muted);
-  list-style:none;user-select:none}
+/* collapsible advanced constants */
+details.advanced{border:1px solid var(--line);border-radius:9px;padding:0;margin-bottom:var(--s2);background:var(--panel)}
+details.advanced>summary{cursor:pointer;padding:11px var(--s2);font-size:12.5px;font-weight:500;color:var(--muted);
+  list-style:none;user-select:none;display:flex;align-items:center;gap:7px}
 details.advanced>summary::-webkit-details-marker{display:none}
-details.advanced>summary::before{content:"\25b8 ";color:var(--muted)}
-details.advanced[open]>summary::before{content:"\25be "}
+details.advanced>summary::before{content:"\25b8";color:var(--accent);font-size:11px;transition:transform .15s}
+details.advanced[open]>summary::before{transform:rotate(90deg)}
 details.advanced[open]>summary{border-bottom:1px solid var(--line)}
 .advanced-body{padding:var(--s2)}
-.derived-note{font-size:12px;color:var(--muted);margin:var(--s2) 0 8px;font-weight:500}
-/* results card - light neutral */
-.results{background:var(--result);border:1px solid var(--line);border-radius:8px;padding:var(--s3);min-height:120px}
-.results h3{margin:0 0 var(--s2);font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+.derived-note{font-size:11.5px;color:var(--faint);margin:var(--s2) 0 8px;font-weight:500}
+/* results card */
+.results{background:var(--result);border:1px solid var(--line);border-radius:12px;padding:22px;min-height:120px}
+.results h3{margin:0 0 var(--s2);font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:600}
 .rrow{display:flex;justify-content:space-between;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
 .rrow:last-child{border-bottom:none}
-.rrow .k{font-size:13px;color:var(--muted)}
-.rrow .v{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--ink)}
-.rrow.primary{padding:6px 0 14px;border-bottom:1px solid var(--line)}
+.rrow .k{font-size:12.5px;color:var(--muted)}
+.rrow .v{font-family:var(--mono);font-size:13.5px;font-weight:500;color:var(--ink);text-align:right}
+.rrow.primary{padding:6px 0 14px}
 .rrow.primary .k{align-self:center}
-.rrow.primary .v{font-size:34px;font-weight:600;color:var(--ink);line-height:1.1}
-.placeholder{color:var(--muted);font-size:14px;text-align:center;padding:40px 20px}
-.note{background:var(--field);border-left:2px solid var(--warn);padding:10px 14px;border-radius:0 6px 6px 0;
-  font-size:13px;color:var(--ink);margin-top:var(--s2)}
-.note ul{margin:6px 0 0;padding-left:18px}.note li{margin:2px 0}
+.rrow.primary .v{font-size:30px;font-weight:600;color:var(--accent);line-height:1.1}
+.placeholder{color:var(--faint);font-size:13px;text-align:center;padding:40px 20px}
+.note{background:var(--result);border:1px solid var(--line);border-left:2px solid var(--accent);padding:11px 15px;
+  border-radius:0 8px 8px 0;font-size:12.5px;color:var(--muted);margin-top:var(--s2);line-height:1.6}
+.note b{color:var(--ink);font-weight:600}
+.note ul{margin:6px 0 0;padding-left:18px}.note li{margin:3px 0}
 .btnrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-top:var(--s1)}
-button.act{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;
-  font-size:14px;font-weight:500}
-button.act:hover{background:#0554d6}
-button.ghost{background:var(--panel);color:var(--accent);border:1px solid var(--line);padding:8px 14px;border-radius:6px;
-  cursor:pointer;font-size:13px}
-button.ghost:hover{border-color:var(--accent)}
-table.dye{width:100%;border-collapse:collapse;font-size:13px}
-table.dye th,table.dye td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
-table.dye th{background:var(--field);font-weight:600;position:sticky;top:53px;cursor:pointer;user-select:none}
+button.act{background:var(--accent);color:#fff;border:none;padding:9px 17px;border-radius:8px;cursor:pointer;
+  font-size:13px;font-weight:500;transition:background .12s}
+button.act:hover{background:var(--accent-hover)}
+button.ghost{background:var(--panel);color:var(--accent);border:1px solid var(--line);padding:8px 15px;border-radius:8px;
+  cursor:pointer;font-size:12.5px;font-weight:500;transition:border-color .12s,background .12s}
+button.ghost:hover{border-color:var(--accent);background:var(--accent-soft)}
+/* log-to-registry as an inline text action */
+.logbtn{margin-top:var(--s1)}
+.logbtn button.ghost{background:none;border:none;color:var(--accent);padding:10px 0 0;font-size:12.5px;font-weight:500}
+.logbtn button.ghost:hover{background:none;text-decoration:underline}
+table.dye{width:100%;border-collapse:collapse;font-size:12.5px}
+table.dye th,table.dye td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}
+table.dye th{background:var(--panel);font-weight:600;position:sticky;top:47px;cursor:pointer;user-select:none;color:var(--muted)}
 table.dye td.num,table.dye th.num{text-align:right;font-family:var(--mono)}
-.tag-user{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
-  color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 6px;vertical-align:middle}
-.dye-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
-.dye-del:hover{color:var(--warn)}
-table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
+table.dye tbody tr{cursor:pointer}
 table.dye tr:hover td{background:var(--accent-soft)}
-.dye-search{max-width:280px;margin-bottom:var(--s2)}
+.tag-user{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-soft);border-radius:5px;padding:1px 6px;vertical-align:middle}
+.dye-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.dye-del:hover{color:var(--danger)}
+table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
+.dye-search{max-width:300px;margin-bottom:var(--s2)}
+/* species / concentration rows */
 .speciesrow{display:grid;grid-template-columns:70px 1fr 34px;gap:var(--s1);align-items:center;margin-bottom:8px}
 .speciesrow input{font-family:var(--mono)}
-.speciesrow button{background:var(--panel);border:1px solid var(--line);border-radius:6px;cursor:pointer;color:var(--muted);height:34px}
-.addrow{font-size:13px}
-.tag{display:inline-block;background:var(--field);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:2px 10px;
-  font-size:12px;margin:2px 4px 2px 0;font-family:var(--mono)}
-.footer{color:var(--muted);font-size:12px;text-align:center;padding:var(--s3)}
-.sub{font-size:12px;color:var(--muted);margin-top:2px}
-.regbox{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:var(--s2)}
+.speciesrow button{background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer;color:var(--faint);height:36px}
+.speciesrow button:hover{border-color:var(--danger);color:var(--danger)}
+.rownum{font-family:var(--mono);font-size:12px;color:var(--faint);text-align:center;font-weight:500}
+.addrow{font-size:12.5px}
+.tag{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid transparent;border-radius:20px;padding:2px 11px;
+  font-size:11.5px;margin:2px 4px 2px 0;font-family:var(--mono)}
+.footer{color:var(--faint);font-size:11.5px;text-align:center;padding:var(--s3)}
+.sub{font-size:11.5px;color:var(--faint);margin-top:2px}
+.regbox{background:var(--result);border:1px solid var(--line);border-radius:12px;padding:17px 19px}
 .regbox .sub{margin-bottom:var(--s1)}
-button.danger{color:var(--warn);border-color:var(--line)}
-button.danger:hover{border-color:var(--warn)}
-.logbtn{margin-top:var(--s2)}
-#reg_summary_body .rrow{padding:4px 0;font-size:13px;display:flex;justify-content:space-between}
+button.danger{color:var(--danger);border-color:var(--line)}
+button.danger:hover{border-color:var(--danger);background:var(--danger-soft)}
+#reg_summary_body .rrow{padding:4px 0;font-size:12.5px;display:flex;justify-content:space-between}
 #reg_summary_body .rrow .k{color:var(--muted)}
 #reg_summary_body .rrow .v{font-family:var(--mono);color:var(--ink)}
-table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointer;font-size:14px;padding:0 4px}
+table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:pointer;font-size:15px;padding:0 4px}
 #reg_table th{position:static;cursor:default}
 .pillrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-bottom:var(--s2)}
-.pillrow button{font-size:13px;padding:6px 12px;border-radius:20px;border:1px solid var(--line);background:var(--panel);
-  cursor:pointer;color:var(--muted)}
+.pillrow button{font-size:12.5px;padding:6px 13px;border-radius:20px;border:1px solid var(--line);background:var(--panel);
+  cursor:pointer;color:var(--muted);font-weight:500;transition:border-color .12s,color .12s}
 .pillrow button:hover{border-color:var(--accent);color:var(--accent)}
-.mstatus{font-size:12px;font-family:var(--mono);color:var(--muted);margin-top:var(--s1)}
-.reagent-add{background:var(--field);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px}
+.mstatus{font-size:11.5px;font-family:var(--mono);color:var(--accent);margin-top:var(--s1)}
+.reagent-add{background:var(--result);border:1px solid var(--line);border-radius:9px;padding:14px;margin-bottom:11px}
+/* workflow strip - connects steps */
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid #eed6d6;
+  border-radius:9px;padding:10px 14px;margin-bottom:var(--s2);font-size:12px;color:var(--ink)}
+.flow .step{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+.flow .step b{background:var(--accent);color:#fff;width:18px;height:18px;border-radius:50%;display:inline-flex;
+  align-items:center;justify-content:center;font-size:11px;font-weight:600}
+.flow .arrow{color:var(--accent);font-weight:600}
+/* glossary */
+.gloss{display:grid;grid-template-columns:1fr 1fr;gap:2px var(--s3)}
+@media(max-width:760px){.gloss{grid-template-columns:1fr}}
+.gterm{padding:12px 0;border-bottom:1px solid var(--line)}
+.gterm dt{font-weight:600;font-size:13px;color:var(--ink);margin-bottom:3px;display:flex;align-items:baseline;gap:8px}
+.gterm dt .abbr{font-family:var(--mono);font-size:11.5px;color:var(--accent);background:var(--accent-soft);
+  border-radius:4px;padding:0 6px;font-weight:600}
+.gterm dd{margin:0;font-size:12px;color:var(--muted);line-height:1.55}
+.info-link{background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 12px;
+  font-size:12px;cursor:pointer;font-weight:500}
+.info-link:hover{border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
-<header><div class="wrap"><h1>ADC Calculator</h1>
-<p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div></header>
+<header><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+<div><h1>ADC Calculator</h1>
+<p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
+<button class="info-link" onclick="document.querySelector('#tabs button[data-tab=&quot;definitions&quot;]').click()" style="flex:none;white-space:nowrap">&#9432; Definitions</button>
+</div></header>
 <nav class="tabs wrap" id="tabs">
   <button data-tab="dar" class="active">DAR</button>
   <button data-tab="conj">Conjugation Designer</button>
@@ -131,6 +165,7 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
   <button data-tab="yield">Yield &amp; Formulation</button>
   <button data-tab="dyes">Dye / Payload Library</button>
   <button data-tab="registry">ADC Registry</button>
+  <button data-tab="definitions">Definitions</button>
 </nav>
 <main class="wrap">
 
@@ -293,6 +328,13 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 
 <!-- ============ Dye Library ============ -->
 <section class="panel" id="panel-dyes">
+  <div class="flow">
+    <span class="step"><b>1</b> Compute &epsilon; from a dilution series</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step"><b>2</b> Add the payload to your library</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step"><b>3</b> Pick it in the UV/Vis DAR panel</span>
+  </div>
   <div class="card">
     <h2>Dye / Payload Library</h2>
     <p class="desc">Reference extinction coefficients for the built-in Alexa Fluor series and pHrodo dyes plus any dyes/payloads you add, as used by the UV/Vis DAR panel. Click a column header to sort; click a row to load it into the UV/Vis calculator. Dyes you add are marked <span class="tag-user">yours</span> and can be deleted; built-ins are read-only.</p>
@@ -312,8 +354,8 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
       <label class="field"><span>&lambda;max <span class="unit">nm</span></span>
         <input id="ec_lmax" type="number" placeholder="e.g. 650"></label>
     </div>
-    <div class="speciesrow" style="grid-template-columns:1fr 1fr 1fr 34px;font-size:12px;color:var(--muted)">
-      <div>Concentration</div><div>A&#8322;&#8320;&#8320; (280&nbsp;nm)</div><div>A&#955;max</div><div></div>
+    <div class="speciesrow" style="grid-template-columns:24px 1fr 1fr 1fr 34px;font-size:11.5px;color:var(--faint);font-weight:500;margin-bottom:6px">
+      <div>#</div><div>Concentration</div><div>A&#8322;&#8320;&#8320; (280&nbsp;nm)</div><div>A&#955;max</div><div></div>
     </div>
     <div id="ec_rows"></div>
     <div class="btnrow">
@@ -346,6 +388,13 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 
 <!-- ============ ADC Registry ============ -->
 <section class="panel" id="panel-registry">
+  <div class="flow">
+    <span class="step"><b>1</b> Compute a result on any panel</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step"><b>2</b> Log to registry &#8862;</span>
+    <span class="arrow">&rarr;</span>
+    <span class="step"><b>3</b> Export CSV for the batch record</span>
+  </div>
   <div class="card">
     <h2>ADC Registry</h2>
     <p class="desc">A running log of every ADC preparation and assay. Each calculator panel has a <b>&#8862; Log to registry</b> button that captures its current inputs and computed results here. Records are stored in this browser (localStorage) and persist across sessions on this machine. Export to CSV for sharing, backup, or analysis in a spreadsheet.</p>
@@ -374,6 +423,27 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 
     <div style="overflow-x:auto"><table class="dye" id="reg_table"></table></div>
     <p class="sub" id="reg_empty" style="display:none">No records yet. Compute a result on any panel, then click <b>Log to registry</b>.</p>
+  </div>
+</section>
+
+<!-- ============ DEFINITIONS / GLOSSARY ============ -->
+<section class="panel" id="panel-definitions">
+  <div class="card">
+    <h2>Definitions &amp; terms</h2>
+    <p class="desc">Concise reference for the quantities and assays used throughout this calculator. Every formula named here is implemented once in the shared calculation core.</p>
+    <dl class="gloss">
+      <div class="gterm"><dt>DAR <span class="abbr">drug : antibody</span></dt><dd>Drug-to-antibody ratio &mdash; the average number of payload molecules conjugated per antibody. The central critical quality attribute (CQA) of an ADC; measurable by UV/Vis, HIC, or LC-MS.</dd></div>
+      <div class="gterm"><dt>&epsilon;280 <span class="abbr">M&#8315;&#185;cm&#8315;&#185;</span></dt><dd>Molar extinction coefficient at 280&nbsp;nm &mdash; how strongly a species absorbs UV light at 280&nbsp;nm. Antibody concentration is derived from A280 via Beer&ndash;Lambert once &epsilon;280 is known.</dd></div>
+      <div class="gterm"><dt>&epsilon;&lambda;max <span class="abbr">M&#8315;&#185;cm&#8315;&#185;</span></dt><dd>Molar extinction coefficient of the payload at its absorbance maximum (&lambda;max). Combined with A&lambda;max, it isolates the payload signal from the antibody backbone.</dd></div>
+      <div class="gterm"><dt>CF@280 <span class="abbr">correction factor</span></dt><dd>Ratio &epsilon;280&#8202;/&#8202;&epsilon;&lambda;max for a payload &mdash; the fraction of its &lambda;max absorptivity that also appears at 280&nbsp;nm. Used to subtract the payload's 280&nbsp;nm contribution when solving for DAR.</dd></div>
+      <div class="gterm"><dt>A280 / A&lambda;max <span class="abbr">absorbance</span></dt><dd>Measured absorbance (AU) at 280&nbsp;nm and at the payload &lambda;max. Their ratio R&nbsp;=&nbsp;A&lambda;max&#8202;/&#8202;A280 drives the two-wavelength UV/Vis DAR deconvolution.</dd></div>
+      <div class="gterm"><dt>HIC <span class="abbr">chromatography</span></dt><dd>Hydrophobic-interaction chromatography &mdash; separates ADC species by drug load. Peak areas give the fraction at each integer DAR; the average DAR is the area-weighted mean.</dd></div>
+      <div class="gterm"><dt>LC-MS reduced vs. intact</dt><dd>Mass spectrometry of drug load. <b>Reduced</b> (denaturing + reducing): light and heavy chains are measured separately and DAR&nbsp;=&nbsp;2&#183;mean&#8202;LC&nbsp;+&nbsp;2&#183;mean&#8202;HC. <b>Intact</b> (native): the whole ADC is measured and DAR is the intensity-weighted mean drug count.</dd></div>
+      <div class="gterm"><dt>Ellman free thiols</dt><dd>DTNB (Ellman's reagent) assay quantifying reduced cysteine &ndash;SH groups per antibody. Confirms the reduction state before maleimide conjugation; full IgG1 reduction exposes 8 interchain thiols.</dd></div>
+      <div class="gterm"><dt>Equivalents &amp; basis</dt><dd>Reagent amount expressed as a multiple of a reference: <b>per mAb</b> (relative to moles of antibody) or <b>per free thiol</b> (relative to reactive thiols). Sets the stoichiometry of each addition in the conjugation plan.</dd></div>
+      <div class="gterm"><dt>Process yield</dt><dd>Recovered ADC mass as a percentage of starting antibody mass &mdash; how much material survived conjugation and purification. Paired with the formulation volume needed to reach a target concentration.</dd></div>
+    </dl>
+    <div class="note"><b>One calculation core.</b> Each definition above corresponds to a function in <span style="font-family:var(--mono)">adc_core</span> (Python + JS + this page), pinned to shared golden values so the numbers never drift between platforms.</div>
   </div>
 </section>
 
@@ -1067,7 +1137,8 @@ let ecRows = [{ c: "", a280: "", almax: "" }, { c: "", a280: "", almax: "" }, { 
 let ecLastFit = null;   // {eps280, epslmax, r280, rlmax}
 function renderEcRows() {
   $("ec_rows").innerHTML = ecRows.map((r, i) => `
-    <div class="speciesrow" style="grid-template-columns:1fr 1fr 1fr 34px">
+    <div class="speciesrow" style="grid-template-columns:24px 1fr 1fr 1fr 34px">
+      <span class="rownum">${i + 1}.</span>
       <input type="number" value="${r.c}" placeholder="conc" oninput="ecRows[${i}].c=this.value">
       <input type="number" value="${r.a280}" placeholder="A280" oninput="ecRows[${i}].a280=this.value">
       <input type="number" value="${r.almax}" placeholder="A\u03bbmax" oninput="ecRows[${i}].almax=this.value">
