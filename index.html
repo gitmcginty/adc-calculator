@@ -158,8 +158,8 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
   font-size:11px;line-height:12px;letter-spacing:0;white-space:pre;
   color:var(--faint);opacity:.55;user-select:none;-webkit-user-select:none;
   cursor:crosshair;touch-action:none;
-  -webkit-mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent);
-  mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent)}
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 4%,#000 96%,transparent);
+  mask-image:linear-gradient(to right,transparent,#000 4%,#000 96%,transparent)}
 #ab_art b{color:var(--accent-hover);font-weight:600;opacity:.95}
 #ab_art i{color:var(--accent);font-style:normal;font-weight:500;opacity:.62}
 @media (max-width:640px){#ab_art{display:none}}
@@ -1341,8 +1341,8 @@ const AB_CELLS = (() => {
 // silhouette, so they never overlap and stay evenly spaced. The whole lattice
 // scrolls diagonally and wraps by one cell period, giving a seamless, orderly
 // stream (rather than a random scatter).
-const AB_SX = AB_SW + 7;                               // horizontal lattice pitch (no overlap)
-const AB_SY = AB_SH + 4;                               // vertical lattice pitch
+const AB_SX = AB_SW + 18;                              // horizontal lattice pitch — wide spacing, sparse fleet
+const AB_SY = AB_SH + 9;                               // vertical lattice pitch
 function abFleet(cols, rows) {
   const ni = Math.ceil(cols / AB_SX) + 2;
   const nj = Math.ceil(rows / AB_SY) + 2;
