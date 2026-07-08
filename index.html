@@ -8,6 +8,15 @@
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
 <title>ADC Calculator</title>
+<script>
+  // Apply the saved theme BEFORE first paint to avoid a flash. Default: dark.
+  (function () {
+    try {
+      var t = localStorage.getItem("adc_theme");
+      document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+    } catch (e) { document.documentElement.setAttribute("data-theme", "dark"); }
+  })();
+</script>
 <style>
 :root{
   color-scheme:light dark;
@@ -19,8 +28,18 @@
   --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
   --s1:8px; --s2:16px; --s3:24px; --s4:32px;
 }
+/* Dark palette — shared by an explicit data-theme="dark" choice and, as a
+   fallback for anyone who lands before the theme script runs, the OS setting.
+   A manual choice (data-theme on <html>) always wins over the media query. */
+:root[data-theme="dark"]{
+  --bg:#16181c; --panel:#1e2127; --ink:#e8eaed; --muted:#9aa2ad; --faint:#6b7480;
+  --line:#2c313a; --field:#23272e; --result:#23272e; --well:#1a1d22;
+  --accent:#e8615f; --accent-soft:#3a2422; --accent-line:#4a2c2a; --accent-hover:#f07c7a; --on-accent:#1a1d21;
+  --warn:#e0a244; --danger:#f0736c; --danger-soft:#3a2320; --ok:#5cc0bc;
+  --empty-hatch:rgba(255,255,255,.04);
+}
 @media (prefers-color-scheme: dark){
-  :root{
+  :root:not([data-theme]){
     --bg:#16181c; --panel:#1e2127; --ink:#e8eaed; --muted:#9aa2ad; --faint:#6b7480;
     --line:#2c313a; --field:#23272e; --result:#23272e; --well:#1a1d22;
     --accent:#e8615f; --accent-soft:#3a2422; --accent-line:#4a2c2a; --accent-hover:#f07c7a; --on-accent:#1a1d21;
@@ -158,8 +177,8 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
   font-size:11px;line-height:12px;letter-spacing:0;white-space:pre;
   color:var(--faint);opacity:.55;user-select:none;-webkit-user-select:none;
   cursor:crosshair;touch-action:none;
-  -webkit-mask-image:linear-gradient(to right,transparent,#000 4%,#000 96%,transparent);
-  mask-image:linear-gradient(to right,transparent,#000 4%,#000 96%,transparent)}
+  -webkit-mask-image:linear-gradient(to right,#000 0,#000 98.5%,transparent);
+  mask-image:linear-gradient(to right,#000 0,#000 98.5%,transparent)}
 #ab_art b{color:var(--accent-hover);font-weight:600;opacity:.95}
 #ab_art i{color:var(--accent);font-style:normal;font-weight:500;opacity:.62}
 @media (max-width:640px){#ab_art{display:none}}
@@ -239,7 +258,10 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 <header><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
 <div><h1>ADC Calculator</h1>
 <p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
-<button class="info-link" onclick="document.querySelector('#tabs button[data-tab=&quot;definitions&quot;]').click()" style="flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:.4em"><svg class="ic"><use href="#ic-info"/></svg>Definitions</button>
+<div style="flex:none;display:flex;gap:8px;align-items:center">
+<button class="info-link" id="theme_toggle" onclick="toggleTheme()" aria-label="Toggle light / dark theme" title="Toggle light / dark theme" style="white-space:nowrap;display:inline-flex;align-items:center;gap:.4em"><span id="theme_toggle_label">Light mode</span></button>
+<button class="info-link" onclick="document.querySelector('#tabs button[data-tab=&quot;definitions&quot;]').click()" style="white-space:nowrap;display:inline-flex;align-items:center;gap:.4em"><svg class="ic"><use href="#ic-info"/></svg>Definitions</button>
+</div>
 </div></header>
 <nav class="tabs wrap" id="tabs" role="tablist" aria-label="Calculator sections">
   <button data-tab="dar" class="active">DAR</button>
@@ -1466,12 +1488,23 @@ function startAntibodyArt() {
   probe.remove();
   if (!(chW > 0)) chW = (parseFloat(cs.fontSize) || 11) * 0.6;      // fallback
   const chH = (parseFloat(cs.lineHeight) || 12);
-  // Round UP and add 2 columns so the field always overfills the element; the
+  // Round UP and add 3 columns so the field always overfills the element; the
   // surplus is clipped by overflow:hidden, guaranteeing edge-to-edge coverage.
-  const cols = Math.max(30, Math.min(560, Math.ceil((el.clientWidth || 900) / chW) + 2));
-  const rows = AB_SH + 7;                               // one molecule tall + margin for the scroll
+  let cols = Math.max(30, Math.min(560, Math.ceil((el.clientWidth || 900) / chW) + 3));
+  let rows = AB_SH + 7;                                 // one molecule tall + margin for the scroll
   // Regular lattice sized to the field (see abFleet): evenly spaced, non-overlapping.
   _abFleet = abFleet(cols, rows);
+  // Refit on resize so the field always spans the current window width (the art
+  // is sized once at load; without this a widened window leaves a right-edge gap).
+  let _abResizeT = null;
+  window.addEventListener("resize", () => {
+    clearTimeout(_abResizeT);
+    _abResizeT = setTimeout(() => {
+      const w = Math.ceil((el.clientWidth || 900) / chW) + 3;
+      const nc = Math.max(30, Math.min(560, w));
+      if (nc !== cols) { cols = nc; _abFleet = abFleet(cols, rows); }
+    }, 150);
+  });
   // cursor tracking (map client coords into the char grid)
   const onMove = (e) => {
     const rect = el.getBoundingClientRect();
@@ -1500,6 +1533,25 @@ const fmt = (x, d = 4) => (x === null || x === undefined || Number.isNaN(x))
   ? "&mdash;" : Number(x).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: 0 });
 function rrow(k, v, cls = "") { return `<div class="rrow ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
 function placeholder(msg) { return `<div class="placeholder">${msg}</div>`; }
+
+// ---- Theme toggle (default dark; choice persisted in localStorage) ----
+function currentTheme() {
+  return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
+}
+function syncThemeToggle() {
+  // Button offers the OTHER theme; label names where a click takes you.
+  const lbl = $("theme_toggle_label");
+  if (lbl) lbl.textContent = currentTheme() === "dark" ? "Light mode" : "Dark mode";
+  const mc = document.querySelector('meta[name="theme-color"]:not([media])')
+    || document.querySelector('meta[name="theme-color"]');
+  if (mc) mc.setAttribute("content", currentTheme() === "dark" ? "#16181c" : "#ffffff");
+}
+function toggleTheme() {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("adc_theme", next); } catch (e) {}
+  syncThemeToggle();
+}
 
 // ---- DAR method segmented control ----
 function setDarMethod(m) {
@@ -2226,8 +2278,14 @@ function calcDosing() {
     const dispenseNote = g.mode === "spike"
       ? `Add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well (on top of ${fmt(g.wellVolumeUL, 3)} &micro;L medium).`
       : `Aspirate medium and add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well.`;
+    // Explicit tube-1 callout: how much ADC stock to charge into the first tube.
+    const t1 = plan.tubes[0];
+    const stockNote = t1
+      ? `Charge <b>tube 1</b> with <b>${fmt(t1.transferInUL, 3)} &micro;L ADC stock</b> (${fmt(g.stockUM, 4)} &micro;M) + ${fmt(t1.diluentUL, 3)} &micro;L medium.`
+      : "";
     tbl += `<div class="card" style="margin-top:12px"><h3><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${g.color};margin-right:6px"></span>${g.name}`
       + `<span class="sub"> — ${g.cell || "cell line n/a"}${g.adc ? " · " + g.adc : ""}</span></h3>`
+      + `<p class="sub">${stockNote}</p>`
       + `<p class="sub">Prepare each tube to ${fmt(plan.vTubeTotalUL, 3)} &micro;L, mix, transfer ${fmt(plan.vTransferUL, 3)} &micro;L to the next tube. ${dispenseNote}</p>`
       + `<div style="overflow-x:auto"><table class="dye"><thead><tr>`
       + `<th>Tube</th><th class="num">Final (${dsUnitLabel(unit)})</th><th class="num">Working (${dsUnitLabel(unit)})</th>`
@@ -2922,6 +2980,7 @@ function initBindings() {
   $("nd_e280").oninput = updateCF; $("nd_elmax").oninput = updateCF;
 }
 window.addEventListener("DOMContentLoaded", () => {
+  syncThemeToggle();
   loadUserDyes();
   populateDyeSelect();
   initBindings();
