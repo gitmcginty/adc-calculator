@@ -130,6 +130,10 @@ button.subtle:hover{color:var(--danger);border-color:var(--danger);background:va
 table.dye{width:100%;border-collapse:collapse;font-size:12.5px}
 table.dye th,table.dye td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line)}
 table.dye th{background:var(--panel);font-weight:600;position:sticky;top:47px;cursor:pointer;user-select:none;color:var(--muted)}
+/* The dose-groups table reuses .dye styling but is short; a sticky header would
+   float over and eclipse the first data row (the long-standing "Group A hidden"
+   bug). Keep it static so every row, including the first, paints. */
+#ds_groups table.dye th{position:static}
 table.dye td.num,table.dye th.num{text-align:right;font-family:var(--mono)}
 table.dye tbody tr{cursor:pointer}
 table.dye tr:hover td{background:var(--accent-soft)}
@@ -1304,49 +1308,52 @@ const $ = (id) => document.getElementById(id);
 // with a density-ramp shimmer so each antibody reads as a textured molecular
 // blob (like a surface render) rather than a line drawing. '#' = body, ' ' = void.
 const AB_MASK_ROWS = [
-  "######    ######",   // Fab tips — two wide arms splayed apart (VH-CH1 / VL-CL)
-  "######    ######",
-  " ######  ###### ",   // wide Fab arms angling inward…
-  "  ############  ",   // …forking together at the hinge (the Y junction)
-  "   ##########   ",
-  "    ########    ",   // hinge — chains cross
-  "     ######     ",   // Fc stem (CH2-CH3) descends
-  "     ######     ",
-  "     ######     ",
-  "     ######     ",
-  "     ######     ",
-  "      ####      ",   // Fc base
+  "  \\\\\\           ///  ",
+  "   \\\\\\         ///   ",
+  "    \\\\\\       ///    ",
+  "     \\\\\\     ///     ",
+  "      \\\\\\   ///      ",
+  "       \\\\\\ ///       ",
+  "        \\\\ //        ",
+  "         \\ /         ",
+  "         \\|/         ",
+  "         |||         ",
+  "         |||         ",
+  "         |||         ",
+  "         |||         ",
 ];
 const AB_SW = AB_MASK_ROWS[0].length, AB_SH = AB_MASK_ROWS.length;
-// Density ramp (sparse → dense), biotic-style: index 0..6.
+// Density ramp (sparse → dense), biotic-style: index 0..6. Used for the
+// background shimmer field only; the antibodies are drawn from their own
+// structural glyphs (/ | \) so they read as line-art molecules.
 const AB_RAMP = " .:*oO0@".split("");   // 8 levels; [0]=void
-// Precompute body cells, flagging edge cells (a body cell missing an orthogonal
-// body neighbour) so the outline can render darker than the shimmering interior.
+// Precompute the antibody's body cells, carrying each cell's structural glyph
+// ('/', '\', '|') so the molecule is rendered as directional line-art rather
+// than a density blob. edge=true marks the outline glyphs (all of them here).
 const AB_CELLS = (() => {
-  const body = (r, c) => r >= 0 && r < AB_SH && c >= 0 && c < AB_SW && AB_MASK_ROWS[r][c] === "#";
   const out = [];
   for (let r = 0; r < AB_SH; r++) for (let c = 0; c < AB_SW; c++) {
-    if (!body(r, c)) continue;
-    const edge = !(body(r - 1, c) && body(r + 1, c) && body(r, c - 1) && body(r, c + 1));
-    out.push({ r, c, edge });
+    const ch = AB_MASK_ROWS[r][c];
+    if (ch === " ") continue;
+    out.push({ r, c, ch });
   }
   return out;
 })();
 
-// deterministic PRNG so the fleet layout is stable across redraws
-function abFleet(cols, rows, n, seed) {
-  let s = seed || 1;
-  const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+// Regular staggered lattice: molecules sit on a grid with spacing wider than the
+// silhouette, so they never overlap and stay evenly spaced. The whole lattice
+// scrolls diagonally and wraps by one cell period, giving a seamless, orderly
+// stream (rather than the previous random scatter).
+const AB_SX = AB_SW + 7;                               // horizontal lattice pitch (no overlap)
+const AB_SY = AB_SH + 4;                               // vertical lattice pitch
+function abFleet(cols, rows) {
+  // enough lattice nodes to cover the field plus a one-cell margin all round
+  const ni = Math.ceil(cols / AB_SX) + 2;
+  const nj = Math.ceil(rows / AB_SY) + 2;
   const fleet = [];
-  // Scatter molecules across the whole field (including above the top and below
-  // the bottom) so the diagonal stream is populated from the first frame.
-  const span = rows + 2 * AB_SH;                       // travel span incl. off-grid margins
-  for (let i = 0; i < n; i++) fleet.push({
-    x: rnd() * (cols + AB_SW) - AB_SW,                // anywhere across the width
-    y: rnd() * span - AB_SH,                          // anywhere along the diagonal stream
-    phase: rnd() * Math.PI * 2,                       // interior-shimmer phase
-    dx: 0, dy: 0,                                     // cursor-scatter offset (decays each frame)
-  });
+  for (let j = 0; j < nj; j++) for (let i = 0; i < ni; i++) {
+    fleet.push({ i, j, phase: (i * 2.399 + j * 1.117) % (Math.PI * 2) });
+  }
   return fleet;
 }
 
@@ -1363,66 +1370,51 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
   const g = Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => ({ c: " ", k: "" })));
   // Background shimmer: a flowing density field across the ramp so the space
-  // between the molecules glimmers with '. : * o O 0' (outline glyph '@' stays
-  // reserved for the antibodies). Blank below a threshold to keep negative space.
-  // The whole shimmer field drifts down-and-right with the molecules: sample the
-  // noise at coordinates that translate over time (same diagonal as the fleet), so
-  // the background flows as one continuous motion rather than shimmering in place.
-  const BG_DX = 0.42, BG_DY = 0.30;                                  // matches fleet drift
+  // between the molecules glimmers with '. : * o O 0' ('@' reserved). The field
+  // drifts down-and-right as one continuous motion; blank below a threshold to
+  // keep some negative space.
+  const BG_DX = 0.42, BG_DY = 0.30;
   for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
-    let n = abNoise((x - BG_DX * t) * 0.45, (y - BG_DY * t) * 0.55, t * 0.35);  // drifting blobs
+    let n = abNoise((x - BG_DX * t) * 0.45, (y - BG_DY * t) * 0.55, t * 0.35);
     if (mouse) {
       const d = Math.hypot(x - mouse.x, y - mouse.y);
       n += 0.6 * Math.cos(d * 0.9 - t * 6) * Math.exp(-d * 0.10);     // cursor ripple
     }
-    // Fill nearly everywhere, but keep the background on the LOW ramp ('. : * o')
-    // so it reads as continuous shading/texture. The dense glyphs ('O 0 @') are
-    // reserved for the antibodies, so the molecules stay legible in the field.
-    let ch = AB_RAMP[1 + Math.min(3, Math.floor(n * 4.5))];           // ramp 1..4 everywhere
-    if (n < 0.10) ch = " ";                                            // rare void fleck
+    let ch = AB_RAMP[1 + Math.min(3, Math.floor(n * 4.5))];           // ramp 1..4
+    if (n < 0.10) ch = " ";
     g[y][x] = { c: ch, k: "" };
   }
   const put = (x, y, c, k) => {
     x = Math.round(x); y = Math.round(y);
     if (c !== " " && x >= 0 && x < cols && y >= 0 && y < rows) g[y][x] = { c, k };
   };
-  // Uniform diagonal drift: every molecule travels down-and-to-the-right at the
-  // same velocity, appearing at the top and disappearing off the bottom.
-  const VX = 0.42, VY = 0.30;                          // chars/sec (down-right diagonal)
+  // Fast diagonal scroll of the whole lattice. ox/oy wrap by one cell pitch so
+  // the regular spacing is preserved frame-to-frame (seamless infinite stream).
+  const VX = 3.2, VY = 1.5;                            // chars/sec — noticeably faster
+  const ox = ((VX * t) % AB_SX + AB_SX) % AB_SX;
+  const oy = ((VY * t) % AB_SY + AB_SY) % AB_SY;
   for (const a of fleet) {
-    a.x += VX * dt;
-    a.y += VY * dt;
-    if (a.y > rows + AB_SH) {                          // exited bottom → recycle to top
-      a.y -= (rows + 2 * AB_SH);
-      a.x = Math.random() * (cols + AB_SW) - AB_SW;    // new horizontal lane
-    }
-    if (a.x > cols + AB_SW) a.x -= (cols + 2 * AB_SW); // wrap width
-    if (mouse) {                                       // cursor shove
-      const cxp = a.x + AB_SW / 2, cyp = a.y + AB_SH / 2;
+    // stagger alternate lattice rows by half a pitch for a natural (non-gridlocked) look
+    const stag = (a.j % 2) * (AB_SX / 2);
+    let bx = a.i * AB_SX + ox + stag - AB_SX;
+    let by = a.j * AB_SY + oy - AB_SY;
+    let mdx = 0, mdy = 0;
+    if (mouse) {                                       // gentle cursor shove
+      const cxp = bx + AB_SW / 2, cyp = by + AB_SH / 2;
       const dxm = cxp - mouse.x, dym = cyp - mouse.y, dist = Math.hypot(dxm, dym);
       if (dist < 12 && dist > 0.01) {
-        const push = (12 - dist) * 0.6;
-        a.dx += (dxm / dist) * push * dt * 6;
-        a.dy += (dym / dist) * push * dt * 6;
+        const push = (12 - dist) * 0.5;
+        mdx = (dxm / dist) * push; mdy = (dym / dist) * push;
       }
     }
-    a.dx *= 0.90; a.dy *= 0.90;                        // spring back to lane
-    const bx = a.x + a.dx, by = a.y + a.dy;
-    // Fill the silhouette: interior AND outline both shimmer across the dense
-    // end of the ramp, so the whole molecule glimmers rather than being framed
-    // by a fixed '@'. The outline just sits one level higher so it stays crisp.
+    bx += mdx; by += mdy;
+    // Draw the structural glyphs. Each glyph shimmers gently between the bright
+    // outline layer ('H') and the dimmer fill layer ('L') via the noise field,
+    // so the line-art has a little life without losing its crisp / | \ form.
     for (const cell of AB_CELLS) {
       const gx = bx + cell.c, gy = by + cell.r;
       const n = abNoise(gx * 1.3, gy * 1.3, t + a.phase);            // 0..1
-      if (cell.edge) {
-        const lvl = 3 + Math.min(4, Math.floor(n * 5));               // ramp idx 3..7 (* o O 0 @)
-        put(gx, gy, AB_RAMP[lvl], "H");                               // shimmering outline
-      } else {
-        // Interior spans the FULL ramp ('. : * o O 0 @') for texture variety —
-        // the molecule stays legible by its red colour, not by glyph density.
-        const lvl = 1 + Math.min(6, Math.floor(n * 7));               // ramp idx 1..7
-        put(gx, gy, AB_RAMP[lvl], "L");                               // shimmering interior
-      }
+      put(gx, gy, cell.ch, n > 0.45 ? "H" : "L");
     }
   }
   return g;
@@ -1448,11 +1440,9 @@ function startAntibodyArt() {
   const cs = getComputedStyle(el);
   const chW = (parseFloat(cs.fontSize) || 11) * 0.6, chH = (parseFloat(cs.lineHeight) || 12);
   const cols = Math.max(30, Math.min(220, Math.floor((el.clientWidth || 900) / chW)));
-  const rows = AB_SH + 9;                               // room for wave amplitude + stagger
-  // Fleet spans ~2× the visible height (molecules stream in from above and out
-  // below), so scale the count up to keep the on-screen field densely intertwined.
-  const density = Math.max(8, Math.round(cols / 9));   // packed enough to interweave, still legible
-  _abFleet = abFleet(cols, rows, density, 20240607);
+  const rows = AB_SH + 7;                               // one molecule tall + margin for the scroll
+  // Regular lattice sized to the field (see abFleet): evenly spaced, non-overlapping.
+  _abFleet = abFleet(cols, rows);
   // cursor tracking (map client coords into the char grid)
   const onMove = (e) => {
     const rect = el.getBoundingClientRect();
