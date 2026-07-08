@@ -1452,8 +1452,23 @@ function startAntibodyArt() {
   if (!el) return;
   // size the field to the element's character grid
   const cs = getComputedStyle(el);
-  const chW = (parseFloat(cs.fontSize) || 11) * 0.6, chH = (parseFloat(cs.lineHeight) || 12);
-  const cols = Math.max(30, Math.min(520, Math.floor((el.clientWidth || 900) / chW)));
+  // Measure the REAL monospace glyph width for the current system font — the old
+  // fontSize×0.6 estimate over-counted pixels-per-char on narrower fonts, so the
+  // centered block fell short of the element width and left a gap at the edges.
+  let chW;
+  const probe = document.createElement("span");
+  probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre;font:" + cs.font;
+  probe.style.fontFamily = cs.fontFamily; probe.style.fontSize = cs.fontSize;
+  probe.style.letterSpacing = cs.letterSpacing;
+  probe.textContent = "M".repeat(100);
+  document.body.appendChild(probe);
+  chW = probe.getBoundingClientRect().width / 100;
+  probe.remove();
+  if (!(chW > 0)) chW = (parseFloat(cs.fontSize) || 11) * 0.6;      // fallback
+  const chH = (parseFloat(cs.lineHeight) || 12);
+  // Round UP and add 2 columns so the field always overfills the element; the
+  // surplus is clipped by overflow:hidden, guaranteeing edge-to-edge coverage.
+  const cols = Math.max(30, Math.min(560, Math.ceil((el.clientWidth || 900) / chW) + 2));
   const rows = AB_SH + 7;                               // one molecule tall + margin for the scroll
   // Regular lattice sized to the field (see abFleet): evenly spaced, non-overlapping.
   _abFleet = abFleet(cols, rows);
