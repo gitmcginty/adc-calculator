@@ -158,6 +158,7 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
   mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent)}
 #ab_art b{color:var(--accent-hover);font-weight:600;opacity:.95}
 #ab_art i{color:var(--accent);font-style:normal;font-weight:500;opacity:.62}
+#ab_art u{color:var(--muted);font-style:normal;text-decoration:none;font-weight:700;opacity:.85}
 @media (max-width:640px){#ab_art{display:none}}
 .sub{font-size:11.5px;color:var(--faint);margin-top:2px}
 .regbox{background:var(--result);border:1px solid var(--line);border-radius:12px;padding:17px 19px}
@@ -1325,11 +1326,15 @@ const AB_RAMP = " .:*oO0@".split("");   // 8 levels; [0]=void
 // body neighbour) so the outline can render darker than the shimmering interior.
 const AB_CELLS = (() => {
   const body = (r, c) => r >= 0 && r < AB_SH && c >= 0 && c < AB_SW && AB_MASK_ROWS[r][c] === "#";
+  // A small cavity in the centre of the Fc bulge — the two heavy chains pair
+  // around a hole. Rendered as a grey '0' so the gap is legible.
+  const HOLE = new Set(["8,7", "8,8", "9,7", "9,8"]);
   const out = [];
   for (let r = 0; r < AB_SH; r++) for (let c = 0; c < AB_SW; c++) {
     if (!body(r, c)) continue;
+    if (HOLE.has(r + "," + c)) { out.push({ r, c, edge: false, hole: true }); continue; }
     const edge = !(body(r - 1, c) && body(r + 1, c) && body(r, c - 1) && body(r, c + 1));
-    out.push({ r, c, edge });
+    out.push({ r, c, edge, hole: false });
   }
   return out;
 })();
@@ -1339,11 +1344,12 @@ function abFleet(cols, rows, n, seed) {
   let s = seed || 1;
   const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
   const fleet = [];
-  const step = cols / n;                              // dense spacing → molecules overlap
+  // Scatter molecules across the whole field (including above the top and below
+  // the bottom) so the diagonal stream is populated from the first frame.
+  const span = rows + 2 * AB_SH;                       // travel span incl. off-grid margins
   for (let i = 0; i < n; i++) fleet.push({
-    x: i * step + rnd() * step * 0.4,                 // packed with jitter so they overlap
-    yoff: (rnd() - 0.5) * 3.0,                         // vertical stagger → interweaving
-    vx: 0.32,                                         // uniform rightward drift (chars/sec)
+    x: rnd() * (cols + AB_SW) - AB_SW,                // anywhere across the width
+    y: rnd() * span - AB_SH,                          // anywhere along the diagonal stream
     phase: rnd() * Math.PI * 2,                       // interior-shimmer phase
     dx: 0, dy: 0,                                     // cursor-scatter offset (decays each frame)
   });
@@ -1382,16 +1388,19 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
     x = Math.round(x); y = Math.round(y);
     if (c !== " " && x >= 0 && x < cols && y >= 0 && y < rows) g[y][x] = { c, k };
   };
-  const amp = (rows - AB_SH) / 2 - 0.5;               // wave amplitude (rows)
-  const mid = (rows - AB_SH) / 2;                      // vertical centre of the lane
+  // Uniform diagonal drift: every molecule travels down-and-to-the-right at the
+  // same velocity, appearing at the top and disappearing off the bottom.
+  const VX = 0.42, VY = 0.30;                          // chars/sec (down-right diagonal)
   for (const a of fleet) {
-    a.x += a.vx * dt;
-    if (a.x > cols + 2) a.x -= (cols + 2 + AB_SW);     // wrap (marquee)
-    // Continuous traveling wave: vertical position follows a sine of x that
-    // scrolls with time, so the whole fleet reads as one wave passing through.
-    const wy = mid + a.yoff + amp * Math.sin(a.x * 0.14 - t * 0.9);
+    a.x += VX * dt;
+    a.y += VY * dt;
+    if (a.y > rows + AB_SH) {                          // exited bottom → recycle to top
+      a.y -= (rows + 2 * AB_SH);
+      a.x = Math.random() * (cols + AB_SW) - AB_SW;    // new horizontal lane
+    }
+    if (a.x > cols + AB_SW) a.x -= (cols + 2 * AB_SW); // wrap width
     if (mouse) {                                       // cursor shove
-      const cxp = a.x + AB_SW / 2, cyp = wy + AB_SH / 2;
+      const cxp = a.x + AB_SW / 2, cyp = a.y + AB_SH / 2;
       const dxm = cxp - mouse.x, dym = cyp - mouse.y, dist = Math.hypot(dxm, dym);
       if (dist < 12 && dist > 0.01) {
         const push = (12 - dist) * 0.6;
@@ -1399,16 +1408,22 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
         a.dy += (dym / dist) * push * dt * 6;
       }
     }
-    a.dx *= 0.90; a.dy *= 0.90;                        // spring back to wave
-    const bx = a.x + a.dx, by = wy + a.dy;
-    // Fill the silhouette: interior shimmers across the mid/high ramp, the
-    // detected outline stays solid & dark so the molecule keeps a crisp edge.
+    a.dx *= 0.90; a.dy *= 0.90;                        // spring back to lane
+    const bx = a.x + a.dx, by = a.y + a.dy;
+    // Fill the silhouette: interior AND outline both shimmer across the dense
+    // end of the ramp, so the whole molecule glimmers rather than being framed
+    // by a fixed '@'. The outline just sits one level higher so it stays crisp.
     for (const cell of AB_CELLS) {
       const gx = bx + cell.c, gy = by + cell.r;
-      if (cell.edge) { put(gx, gy, AB_RAMP[7], "H"); continue; }      // '@' outline
+      if (cell.hole) { put(gx, gy, "0", "G"); continue; }             // grey cavity '0'
       const n = abNoise(gx * 1.3, gy * 1.3, t + a.phase);            // 0..1
-      const lvl = 4 + Math.min(3, Math.floor(n * 4));                 // ramp idx 4..7 (o O 0 @)
-      put(gx, gy, AB_RAMP[lvl], "L");
+      if (cell.edge) {
+        const lvl = 5 + Math.min(2, Math.floor(n * 3));               // ramp idx 5..7 (O 0 @)
+        put(gx, gy, AB_RAMP[lvl], "H");                               // shimmering outline
+      } else {
+        const lvl = 4 + Math.min(3, Math.floor(n * 4));               // ramp idx 4..7 (o O 0 @)
+        put(gx, gy, AB_RAMP[lvl], "L");                               // shimmering interior
+      }
     }
   }
   return g;
@@ -1419,7 +1434,8 @@ function abFieldHtml(g) {
     let s = "", run = "", k = null;
     const flush = () => {
       if (!run) return;
-      s += k === "H" ? "<b>" + run + "</b>" : k === "L" ? "<i>" + run + "</i>" : run;
+      s += k === "H" ? "<b>" + run + "</b>" : k === "L" ? "<i>" + run + "</i>"
+         : k === "G" ? "<u>" + run + "</u>" : run;
       run = "";
     };
     for (const cell of row) { if (cell.k !== k) { flush(); k = cell.k; } run += abEsc(cell.c); }
@@ -1435,7 +1451,9 @@ function startAntibodyArt() {
   const chW = (parseFloat(cs.fontSize) || 11) * 0.6, chH = (parseFloat(cs.lineHeight) || 12);
   const cols = Math.max(30, Math.min(220, Math.floor((el.clientWidth || 900) / chW)));
   const rows = AB_SH + 9;                               // room for wave amplitude + stagger
-  const density = Math.max(4, Math.round(cols / 19));   // packed enough to interweave, still legible
+  // Fleet spans ~2× the visible height (molecules stream in from above and out
+  // below), so scale the count up to keep the on-screen field densely intertwined.
+  const density = Math.max(8, Math.round(cols / 9));   // packed enough to interweave, still legible
   _abFleet = abFleet(cols, rows, density, 20240607);
   // cursor tracking (map client coords into the char grid)
   const onMove = (e) => {
