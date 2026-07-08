@@ -1308,34 +1308,31 @@ const $ = (id) => document.getElementById(id);
 // with a density-ramp shimmer so each antibody reads as a textured molecular
 // blob (like a surface render) rather than a line drawing. '#' = body, ' ' = void.
 const AB_MASK_ROWS = [
-  "  \\\\\\           ///  ",
-  "   \\\\\\         ///   ",
-  "    \\\\\\       ///    ",
-  "     \\\\\\     ///     ",
-  "      \\\\\\   ///      ",
-  "       \\\\\\ ///       ",
-  "        \\\\ //        ",
-  "         \\ /         ",
-  "         \\|/         ",
-  "         |||         ",
-  "         |||         ",
-  "         |||         ",
-  "         |||         ",
+  "######    ######",   // Fab tips — two wide arms splayed apart (VH-CH1 / VL-CL)
+  "######    ######",
+  " ######  ###### ",   // wide Fab arms angling inward…
+  "  ############  ",   // …forking together at the hinge (the Y junction)
+  "   ##########   ",
+  "    ########    ",   // hinge — chains cross
+  "     ######     ",   // Fc stem (CH2-CH3) descends
+  "     ######     ",
+  "     ######     ",
+  "     ######     ",
+  "     ######     ",
+  "      ####      ",   // Fc base
 ];
 const AB_SW = AB_MASK_ROWS[0].length, AB_SH = AB_MASK_ROWS.length;
-// Density ramp (sparse → dense), biotic-style: index 0..6. Used for the
-// background shimmer field only; the antibodies are drawn from their own
-// structural glyphs (/ | \) so they read as line-art molecules.
+// Density ramp (sparse → dense), biotic-style: index 0..6.
 const AB_RAMP = " .:*oO0@".split("");   // 8 levels; [0]=void
-// Precompute the antibody's body cells, carrying each cell's structural glyph
-// ('/', '\', '|') so the molecule is rendered as directional line-art rather
-// than a density blob. edge=true marks the outline glyphs (all of them here).
+// Precompute body cells, flagging edge cells (a body cell missing an orthogonal
+// body neighbour) so the outline can render darker than the shimmering interior.
 const AB_CELLS = (() => {
+  const body = (r, c) => r >= 0 && r < AB_SH && c >= 0 && c < AB_SW && AB_MASK_ROWS[r][c] === "#";
   const out = [];
   for (let r = 0; r < AB_SH; r++) for (let c = 0; c < AB_SW; c++) {
-    const ch = AB_MASK_ROWS[r][c];
-    if (ch === " ") continue;
-    out.push({ r, c, ch });
+    if (!body(r, c)) continue;
+    const edge = !(body(r - 1, c) && body(r + 1, c) && body(r, c - 1) && body(r, c + 1));
+    out.push({ r, c, edge });
   }
   return out;
 })();
@@ -1343,11 +1340,10 @@ const AB_CELLS = (() => {
 // Regular staggered lattice: molecules sit on a grid with spacing wider than the
 // silhouette, so they never overlap and stay evenly spaced. The whole lattice
 // scrolls diagonally and wraps by one cell period, giving a seamless, orderly
-// stream (rather than the previous random scatter).
+// stream (rather than a random scatter).
 const AB_SX = AB_SW + 7;                               // horizontal lattice pitch (no overlap)
 const AB_SY = AB_SH + 4;                               // vertical lattice pitch
 function abFleet(cols, rows) {
-  // enough lattice nodes to cover the field plus a one-cell margin all round
   const ni = Math.ceil(cols / AB_SX) + 2;
   const nj = Math.ceil(rows / AB_SY) + 2;
   const fleet = [];
@@ -1398,23 +1394,27 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
     const stag = (a.j % 2) * (AB_SX / 2);
     let bx = a.i * AB_SX + ox + stag - AB_SX;
     let by = a.j * AB_SY + oy - AB_SY;
-    let mdx = 0, mdy = 0;
     if (mouse) {                                       // gentle cursor shove
       const cxp = bx + AB_SW / 2, cyp = by + AB_SH / 2;
       const dxm = cxp - mouse.x, dym = cyp - mouse.y, dist = Math.hypot(dxm, dym);
       if (dist < 12 && dist > 0.01) {
         const push = (12 - dist) * 0.5;
-        mdx = (dxm / dist) * push; mdy = (dym / dist) * push;
+        bx += (dxm / dist) * push; by += (dym / dist) * push;
       }
     }
-    bx += mdx; by += mdy;
-    // Draw the structural glyphs. Each glyph shimmers gently between the bright
-    // outline layer ('H') and the dimmer fill layer ('L') via the noise field,
-    // so the line-art has a little life without losing its crisp / | \ form.
+    // Fill the silhouette: interior AND outline both shimmer across the dense
+    // end of the ramp, so the whole molecule glimmers rather than being framed
+    // by a fixed '@'. The outline just sits one level higher so it stays crisp.
     for (const cell of AB_CELLS) {
       const gx = bx + cell.c, gy = by + cell.r;
       const n = abNoise(gx * 1.3, gy * 1.3, t + a.phase);            // 0..1
-      put(gx, gy, cell.ch, n > 0.45 ? "H" : "L");
+      if (cell.edge) {
+        const lvl = 3 + Math.min(4, Math.floor(n * 5));               // ramp idx 3..7 (* o O 0 @)
+        put(gx, gy, AB_RAMP[lvl], "H");                               // shimmering outline
+      } else {
+        const lvl = 1 + Math.min(6, Math.floor(n * 7));               // ramp idx 1..7
+        put(gx, gy, AB_RAMP[lvl], "L");                               // shimmering interior
+      }
     }
   }
   return g;
