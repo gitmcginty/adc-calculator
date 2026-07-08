@@ -181,6 +181,8 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
   mask-image:linear-gradient(to right,#000 0,#000 98.5%,transparent)}
 #ab_art b{color:var(--accent-hover);font-weight:600;opacity:.95}
 #ab_art i{color:var(--accent);font-style:normal;font-weight:500;opacity:.62}
+#ab_art u{color:var(--warn);font-weight:700;text-decoration:none;opacity:.95}
+#ab_art s{color:var(--warn);font-weight:700;text-decoration:none;opacity:.45}
 @media (max-width:640px){#ab_art{display:none}}
 .sub{font-size:11.5px;color:var(--faint);margin-top:2px}
 .regbox{background:var(--result);border:1px solid var(--line);border-radius:12px;padding:17px 19px}
@@ -221,7 +223,7 @@ table.dye tr.just-added>td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .info-link:hover{border-color:var(--accent);color:var(--accent)}
 /* global active-ADC bar (identity travels with you across every tab) */
 .adcbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);
-  border-left:3px solid var(--accent);border-radius:10px;padding:11px 16px;margin-bottom:var(--s3)}
+  border-left:3px solid var(--accent);border-radius:10px;padding:11px 16px;margin-top:var(--s2);margin-bottom:var(--s3);scroll-margin-top:64px}
 .adcbar .lead{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:600;white-space:nowrap}
 .adcbar .fld{display:flex;align-items:center;gap:7px}
 .adcbar .fld label{font-size:11.5px;color:var(--muted);font-weight:500;white-space:nowrap}
@@ -1359,6 +1361,14 @@ const AB_CELLS = (() => {
   return out;
 })();
 
+// DAR-2 payloads: one stylised star flanking each side of the antibody, sitting
+// just below the Fab arms at the hinge (where the two arms converge into the Y
+// stem). The mask body at row 4 spans cols 3–12, so cols 1 and 14 are clear
+// slots one column out from the neck — the drugs read as conjugated to the Fab
+// region without overlapping the silhouette.
+const AB_PAYLOAD_GLYPH = "\u2726";                    // ✦ four-pointed star
+const AB_PAYLOADS = [{ r: 4, c: 1 }, { r: 4, c: 14 }];
+
 // Regular staggered lattice: molecules sit on a grid with spacing wider than the
 // silhouette, so they never overlap and stay evenly spaced. The whole lattice
 // scrolls diagonally and wraps by one cell period, giving a seamless, orderly
@@ -1452,6 +1462,13 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
         put(gx, gy, AB_RAMP[lvl], "L");                               // shimmering interior
       }
     }
+    // DAR-2 payloads: a star on each flank, gently twinkling (bright/dim) out of
+    // phase with the body shimmer so they read as attached drugs, not silhouette.
+    for (let pi = 0; pi < AB_PAYLOADS.length; pi++) {
+      const p = AB_PAYLOADS[pi];
+      const tw = Math.sin(t * 2.4 + a.phase + pi * 1.7);             // -1..1 twinkle
+      put(bx + p.c, by + p.r, AB_PAYLOAD_GLYPH, tw > -0.55 ? "P" : "p");
+    }
   }
   return g;
 }
@@ -1461,7 +1478,8 @@ function abFieldHtml(g) {
     let s = "", run = "", k = null;
     const flush = () => {
       if (!run) return;
-      s += k === "H" ? "<b>" + run + "</b>" : k === "L" ? "<i>" + run + "</i>" : run;
+      s += k === "H" ? "<b>" + run + "</b>" : k === "L" ? "<i>" + run + "</i>"
+         : k === "P" ? "<u>" + run + "</u>" : k === "p" ? "<s>" + run + "</s>" : run;
       run = "";
     };
     for (const cell of row) { if (cell.k !== k) { flush(); k = cell.k; } run += abEsc(cell.c); }
