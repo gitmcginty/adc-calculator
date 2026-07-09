@@ -370,6 +370,444 @@ def yield_and_formulation(
 
 
 # ==========================================================================
+# 8b. In vitro dosing / serial dilution  (spec §8b)
+# ==========================================================================
+# Default per-well working (assay) volumes in microliters, keyed by plate
+# format (number of wells). These are typical adherent-cell working volumes;
+# the UI lets the user override the well volume for any format.
+PLATE_WELL_VOLUME_UL: dict[str, float] = {
+    "6": 2000.0, "12": 1000.0, "24": 500.0, "48": 250.0,
+    "96": 100.0, "384": 50.0, "1536": 10.0,
+}
+
+
+def plate_well_volume(plate_type) -> float:
+    """Default working volume (uL) for a plate format; raises on unknown format."""
+    key = str(plate_type).strip()
+    if key not in PLATE_WELL_VOLUME_UL:
+        raise ValueError(f"unknown plate type {plate_type!r}")
+    return PLATE_WELL_VOLUME_UL[key]
+
+
+@dataclass(frozen=True)
+class DoseTube:
+    index: int                 # 1-based tube position in the series
+    final_conc_uM: float       # target concentration in the well
+    working_conc_uM: float     # concentration of the dosing solution in the tube
+    source: str                # where the concentrated aliquot comes from
+    transfer_in_uL: float      # volume drawn from source (stock or previous tube)
+    diluent_uL: float          # assay medium added to this tube
+    total_uL: float            # prepared volume in this tube
+    dispense_to_wells_uL: float  # volume dispensed from this tube to its wells
+
+
+@dataclass(frozen=True)
+class DosingPlan:
+    final_concs_uM: list[float]
+    working_concs_uM: list[float]
+    dose_mode: str
+    dose_factor: float
+    v_add_per_well_uL: float
+    final_well_volume_uL: float
+    v_use_per_tube_uL: float
+    v_transfer_uL: float
+    v_tube_total_uL: float
+    tubes: list[DoseTube]
+    total_stock_uL: float
+    total_diluent_uL: float
+    total_wells: int
+    warnings: list[str]
+
+
+def plan_serial_dilution(
+    stock_uM: float,
+    top_uM: float,
+    fold: float,
+    n_points: int,
+    replicates: int,
+    well_volume_uL: float,
+    dose_mode: str = "spike",
+    dose_factor: float = 10.0,
+    dose_volume_uL: float | None = None,
+    overage: float = 1.1,
+    extra_dead_uL: float = 0.0,
+) -> DosingPlan:
+    """Design a serial dilution + plate-dosing scheme for an in vitro assay.
+
+    From an ADC stock (`stock_uM`), an ideal top in-well concentration
+    (`top_uM`), a constant `fold` dilution, a number of concentration points
+    (`n_points`), and `replicates` per point, compute the per-tube pipetting
+    recipe and the volume to add to each well.
+
+    Two dosing modes:
+
+    * ``"spike"`` — add a small spike of a concentrated dosing solution on top
+      of the existing medium. The dosing solution is prepared at
+      ``dose_factor x`` the final concentration, and the spike volume is
+      ``well_volume / (dose_factor - 1)`` so that after mixing into the well
+      the concentration is the intended final value. By default
+      ``dose_factor = 10`` (a 1:10 spike).
+    * ``"replace"`` — aspirate the medium and replace it with dosing solution
+      already at the final concentration (``dose_factor`` forced to 1). The
+      volume added equals the full well volume.
+
+    Serial-dilution volumes are self-consistent: each tube is prepared to a
+    uniform total so that the transfer drawn into the next tube plus the
+    volume dispensed to the wells exactly balance the fold ratio. ``overage``
+    (default 1.1 = 10% extra) and ``extra_dead_uL`` add margin for pipetting
+    losses.
+
+    Returns a :class:`DosingPlan`. All volumes are in microliters, all
+    concentrations in micromolar.
+    """
+    if stock_uM <= 0:
+        raise ValueError("stock concentration must be > 0")
+    if top_uM <= 0:
+        raise ValueError("top concentration must be > 0")
+    if fold <= 1:
+        raise ValueError("fold-dilution must be > 1")
+    if n_points < 1:
+        raise ValueError("need at least 1 concentration point")
+    if replicates < 1:
+        raise ValueError("need at least 1 replicate")
+    if well_volume_uL <= 0:
+        raise ValueError("well volume must be > 0")
+    if dose_mode not in ("spike", "replace"):
+        raise ValueError("dose_mode must be 'spike' or 'replace'")
+    if dose_mode == "spike" and dose_factor <= 1:
+        raise ValueError("dose_factor must be > 1 for spike mode")
+
+    n = int(n_points)
+    final_concs = [top_uM / (fold ** i) for i in range(n)]
+    df = 1.0 if dose_mode == "replace" else float(dose_factor)
+    working_concs = [c * df for c in final_concs]
+
+    if dose_mode == "replace":
+        v_add = well_volume_uL
+        final_well_vol = well_volume_uL
+    else:
+        v_add = dose_volume_uL if dose_volume_uL else well_volume_uL / (df - 1.0)
+        final_well_vol = well_volume_uL + v_add
+
+    v_use = v_add * replicates * overage + extra_dead_uL
+    v_xfer = v_use / (fold - 1.0)
+    v_tube_total = v_use + v_xfer
+
+    stock_vol_tube1 = v_tube_total * working_concs[0] / stock_uM
+    tubes: list[DoseTube] = []
+    for i in range(n):
+        if i == 0:
+            source = "ADC stock"
+            transfer_in = stock_vol_tube1
+            diluent = v_tube_total - stock_vol_tube1
+        else:
+            source = f"tube {i} (transfer)"
+            transfer_in = v_xfer
+            diluent = v_use
+        tubes.append(DoseTube(
+            index=i + 1,
+            final_conc_uM=final_concs[i],
+            working_conc_uM=working_concs[i],
+            source=source,
+            transfer_in_uL=transfer_in,
+            diluent_uL=diluent,
+            total_uL=transfer_in + diluent,
+            dispense_to_wells_uL=v_use,
+        ))
+
+    total_diluent = sum(t.diluent_uL for t in tubes)
+    warnings: list[str] = []
+    if working_concs[0] > stock_uM:
+        warnings.append(
+            f"Top working conc {working_concs[0]:.4g} uM exceeds stock "
+            f"{stock_uM:.4g} uM - stock too dilute for this design."
+        )
+    if stock_vol_tube1 < 1.0:
+        warnings.append(
+            f"Tube-1 stock volume {stock_vol_tube1:.3g} uL < 1 uL - hard to "
+            f"pipette accurately; use an intermediate dilution or a larger "
+            f"prep volume."
+        )
+
+    return DosingPlan(
+        final_concs_uM=final_concs,
+        working_concs_uM=working_concs,
+        dose_mode=dose_mode,
+        dose_factor=df,
+        v_add_per_well_uL=v_add,
+        final_well_volume_uL=final_well_vol,
+        v_use_per_tube_uL=v_use,
+        v_transfer_uL=v_xfer,
+        v_tube_total_uL=v_tube_total,
+        tubes=tubes,
+        total_stock_uL=stock_vol_tube1,
+        total_diluent_uL=total_diluent,
+        total_wells=n * replicates,
+        warnings=warnings,
+    )
+
+
+# ==========================================================================
+# 8c. Plate map  (spec §8c)
+# ==========================================================================
+# Physical row x column geometry for each supported plate format.
+PLATE_GEOMETRY: dict[str, tuple[int, int]] = {
+    "6": (2, 3), "12": (3, 4), "24": (4, 6), "48": (6, 8),
+    "96": (8, 12), "384": (16, 24), "1536": (32, 48),
+}
+
+
+def _row_label(i: int) -> str:
+    """Excel-style row label: 0->A, 25->Z, 26->AA, ..."""
+    s = ""
+    i += 1
+    while i > 0:
+        i, r = divmod(i - 1, 26)
+        s = chr(65 + r) + s
+    return s
+
+
+@dataclass(frozen=True)
+class PlateWell:
+    row: int                 # 0-based grid row
+    col: int                 # 0-based grid column
+    row_label: str | None    # "A".."AF" (None if off-plate)
+    col_label: int           # 1-based column number
+    point: int               # 0-based concentration-point index
+    replicate: int           # 1-based replicate number
+    final_conc_uM: float
+    in_bounds: bool          # False if the assignment falls outside the grid
+
+
+@dataclass(frozen=True)
+class PlateMap:
+    plate_type: str
+    rows: int
+    cols: int
+    orientation: str         # actual layout used
+    capacity: int
+    used: int
+    wells: list[PlateWell]
+    warnings: list[str]
+
+
+def plate_map(
+    final_concs_uM,
+    replicates: int,
+    plate_type,
+    orientation: str = "by_column",
+) -> PlateMap:
+    """Assign a dose series (concentration points x replicates) to plate wells.
+
+    ``orientation``:
+
+    * ``"by_column"`` (default) — each concentration point occupies one column
+      (dose increases left to right), replicates fill the rows of that column.
+    * ``"by_row"`` — each point occupies one row, replicates fill columns.
+    * ``"sequential"`` — row-major fill, replicates grouped consecutively.
+
+    If the requested grid layout does not fit the plate (too many points for
+    the columns, or too many replicates for the rows), the function falls back
+    to sequential fill and records a warning. A second warning is added when
+    the total well count exceeds the plate capacity.
+    """
+    key = str(plate_type).strip()
+    if key not in PLATE_GEOMETRY:
+        raise ValueError(f"unknown plate type {plate_type!r}")
+    if replicates < 1:
+        raise ValueError("need at least 1 replicate")
+    concs = list(final_concs_uM)
+    n = len(concs)
+    if n < 1:
+        raise ValueError("need at least 1 concentration point")
+
+    rows, cols = PLATE_GEOMETRY[key]
+    capacity = rows * cols
+    used = n * replicates
+    warnings: list[str] = []
+
+    if orientation == "by_column" and n <= cols and replicates <= rows:
+        used_orient = "by_column"
+    elif orientation == "by_row" and n <= rows and replicates <= cols:
+        used_orient = "by_row"
+    else:
+        used_orient = "sequential"
+        if orientation in ("by_column", "by_row"):
+            warnings.append(
+                f"{n} points x {replicates} replicates do not fit the "
+                f"{rows}x{cols} grid in {orientation} layout; using "
+                f"sequential fill."
+            )
+
+    placed: list[tuple[int, int, int, int]] = []  # (row, col, point, rep0)
+    if used_orient == "by_column":
+        for i in range(n):
+            for r in range(replicates):
+                placed.append((r, i, i, r))
+    elif used_orient == "by_row":
+        for i in range(n):
+            for r in range(replicates):
+                placed.append((i, r, i, r))
+    else:
+        pos = 0
+        for i in range(n):
+            for r in range(replicates):
+                placed.append((pos // cols, pos % cols, i, r))
+                pos += 1
+
+    if used > capacity:
+        warnings.append(
+            f"{used} wells needed exceeds {key}-well capacity ({capacity})."
+        )
+
+    wells: list[PlateWell] = []
+    for (rr, cc, pi, rep0) in placed:
+        inside = rr < rows and cc < cols
+        wells.append(PlateWell(
+            row=rr, col=cc,
+            row_label=_row_label(rr) if inside else None,
+            col_label=cc + 1,
+            point=pi, replicate=rep0 + 1,
+            final_conc_uM=concs[pi], in_bounds=inside,
+        ))
+
+    return PlateMap(
+        plate_type=key, rows=rows, cols=cols, orientation=used_orient,
+        capacity=capacity, used=used, wells=wells, warnings=warnings,
+    )
+
+
+def plate_map_to_csv(pmap: PlateMap) -> str:
+    """Deterministic CSV of a plate map: one row per assigned well."""
+    lines = ["well,row,column,point,replicate,final_conc_uM"]
+    for w in pmap.wells:
+        well = f"{w.row_label}{w.col_label}" if w.row_label else "(off-plate)"
+        lines.append(
+            f"{well},{w.row_label or ''},{w.col_label},{w.point + 1},"
+            f"{w.replicate},{w.final_conc_uM:.6g}"
+        )
+    return "\n".join(lines)
+
+
+# ==========================================================================
+# 8e. Concentration units + selection-driven dosing  (spec §8e)
+# ==========================================================================
+# Multiplicative factor to convert a value in the given unit to micromolar.
+CONC_UNIT_TO_UM: dict[str, float] = {"uM": 1.0, "nM": 1e-3, "pM": 1e-6}
+
+
+def convert_concentration(value: float, from_unit: str, to_unit: str) -> float:
+    """Convert a concentration between uM / nM / pM."""
+    if from_unit not in CONC_UNIT_TO_UM:
+        raise ValueError(f"unknown unit {from_unit!r}")
+    if to_unit not in CONC_UNIT_TO_UM:
+        raise ValueError(f"unknown unit {to_unit!r}")
+    return value * CONC_UNIT_TO_UM[from_unit] / CONC_UNIT_TO_UM[to_unit]
+
+
+def series_shape_from_selection(n_rows: int, n_cols: int,
+                                orientation: str = "by_column") -> tuple[int, int]:
+    """Geometry contract: a painted ``n_rows`` x ``n_cols`` rectangle becomes a
+    ``(n_points, replicates)`` design.
+
+    * ``by_column`` (default) — each column is a concentration point (dose
+      decreases left to right), rows are replicates.
+    * ``by_row`` — each row is a concentration point, columns are replicates.
+    """
+    if n_rows < 1 or n_cols < 1:
+        raise ValueError("selection must be at least 1x1")
+    if orientation == "by_row":
+        return n_rows, n_cols
+    return n_cols, n_rows
+
+
+@dataclass(frozen=True)
+class SelectionWell:
+    row: int                 # 0-based grid row (absolute plate coordinate)
+    col: int                 # 0-based grid column
+    point: int               # 0-based concentration-point index within the group
+    replicate: int           # 1-based replicate number
+    final_conc_uM: float | None   # None if the well lies past the series length
+
+
+@dataclass(frozen=True)
+class SelectionAssignment:
+    wells: list[SelectionWell]
+    rows: int                # bounding-box height of the selection
+    cols: int                # bounding-box width
+    origin: tuple[int, int]  # (row, col) of the top-left selected well
+    rectangular: bool        # True if the selection fills its bounding box
+    orientation: str
+    warnings: list[str]
+
+
+def assign_selection(cells, final_concs_uM,
+                     orientation: str = "by_column") -> SelectionAssignment:
+    """Map a group's concentration series onto its selected wells.
+
+    ``cells`` is an iterable of ``(row, col)`` 0-based plate coordinates (any
+    offset on the plate). Concentration point and replicate index are read from
+    each well's position within the selection's bounding box, per
+    ``orientation``. Wells whose point index falls past the series length get a
+    ``final_conc_uM`` of ``None``; a warning is recorded when the series length
+    does not match the selection's span along the dose axis.
+    """
+    cleaned = sorted({(int(r), int(c)) for r, c in cells})
+    if not cleaned:
+        raise ValueError("no cells selected")
+    concs = list(final_concs_uM)
+    n = len(concs)
+
+    rows = [r for r, _ in cleaned]
+    cols = [c for _, c in cleaned]
+    r0, c0 = min(rows), min(cols)
+    h = max(rows) - r0 + 1
+    w = max(cols) - c0 + 1
+    rectangular = (len(cleaned) == h * w)
+
+    dose_span = h if orientation == "by_row" else w
+    warnings: list[str] = []
+    if n != dose_span:
+        warnings.append(
+            f"{n} concentration points but selection spans {dose_span} "
+            f"well(s) along the dose axis."
+        )
+
+    wells: list[SelectionWell] = []
+    for (r, c) in cleaned:
+        if orientation == "by_row":
+            pt = r - r0
+            rep = c - c0 + 1
+        else:
+            pt = c - c0
+            rep = r - r0 + 1
+        conc = concs[pt] if 0 <= pt < n else None
+        wells.append(SelectionWell(row=r, col=c, point=pt,
+                                   replicate=rep, final_conc_uM=conc))
+
+    return SelectionAssignment(
+        wells=wells, rows=h, cols=w, origin=(r0, c0),
+        rectangular=rectangular, orientation=orientation, warnings=warnings,
+    )
+
+
+def aggregate_dosing_plans(plans) -> dict:
+    """Sum reagent totals across several group :class:`DosingPlan` objects so a
+    multi-group plate reports one combined stock / medium / well tally.
+
+    (Stock volumes are summed as micromolar-equivalent volumes only when the
+    groups share a stock; callers that mix stocks should read per-group totals.)
+    """
+    plans = list(plans)
+    return {
+        "n_groups": len(plans),
+        "total_stock_uL": sum(p.total_stock_uL for p in plans),
+        "total_diluent_uL": sum(p.total_diluent_uL for p in plans),
+        "total_wells": sum(p.total_wells for p in plans),
+    }
+
+
+# ==========================================================================
 # 9b. Extinction-coefficient determination  (spec §9b)
 # ==========================================================================
 # Ordinary least-squares fit of a Beer-Lambert dilution series. For a set of
@@ -423,6 +861,102 @@ def extinction_coefficient(
         "intercept": fit["intercept"],
         "r_squared": fit["r_squared"],
         "n": fit["n"],
+    }
+
+
+# ==========================================================================
+# 9b. Uncertainty / error propagation  (spec §2, §5, §6)
+# ==========================================================================
+def dar_uv_uncertainty(
+    a280: float,
+    a_lmax: float,
+    eps280_mab: float,
+    eps_lmax_mab: float,
+    eps280_lp: float,
+    eps_lmax_lp: float,
+    sigma_a280: float = 0.0,
+    sigma_a_lmax: float = 0.0,
+) -> dict:
+    """UV/Vis DAR with a 1-sigma error propagated from the two absorbance reads.
+
+    DAR depends on the measurements only through the ratio R = a_lmax / a280,
+    so first-order (Gaussian) propagation gives
+
+        sigma_R  = |R| * sqrt((sigma_a280/a280)^2 + (sigma_a_lmax/a_lmax)^2)
+        sigma_DAR = |dDAR/dR| * sigma_R,
+
+    with the analytic derivative of DAR(R). A symmetric 95% interval uses
+    1.96*sigma_DAR. Zero input sigmas give sigma_DAR = 0 and a degenerate
+    interval equal to the point estimate.
+    """
+    if a280 == 0:
+        raise ValueError("A280 must be non-zero")
+    if a_lmax == 0 and sigma_a_lmax != 0.0:
+        raise ValueError("A_lmax must be non-zero to propagate its error")
+    r = a_lmax / a280
+    denom = r * eps280_lp - eps_lmax_lp
+    if denom == 0:
+        raise ZeroDivisionError("Degenerate optics: R*eps280_LP == eps_lmax_LP")
+    dar = (eps_lmax_mab - r * eps280_mab) / denom
+    # dDAR/dR via quotient rule on (eps_lmax_mab - R*eps280_mab)/(R*eps280_lp - eps_lmax_lp)
+    numer = eps_lmax_mab - r * eps280_mab
+    d_dar_d_r = (-eps280_mab * denom - numer * eps280_lp) / denom ** 2
+    rel_var = 0.0
+    if sigma_a280:
+        rel_var += (sigma_a280 / a280) ** 2
+    if sigma_a_lmax:
+        rel_var += (sigma_a_lmax / a_lmax) ** 2
+    sigma_r = abs(r) * (rel_var ** 0.5)
+    sigma_dar = abs(d_dar_d_r) * sigma_r
+    return {
+        "dar": dar,
+        "sigma_dar": sigma_dar,
+        "ci95_low": dar - 1.96 * sigma_dar,
+        "ci95_high": dar + 1.96 * sigma_dar,
+        "sigma_r": sigma_r,
+        "rel_sigma": (sigma_dar / dar) if dar != 0 else None,
+    }
+
+
+def distribution_dispersion(weights: Mapping[int, float]) -> dict:
+    """Population mean, variance and SD of a weighted drug-load distribution.
+
+    `weights` maps drug count k -> abundance (HIC peak area or LC-MS intensity).
+    The SD is the *heterogeneity* of the sample: the spread of drug load across
+    species, not a measurement error. Population moments (divide by total
+    weight, not weight-1) since the peaks are the whole measured population.
+    """
+    total = sum(weights.values())
+    if total == 0:
+        raise ValueError("Total weight must be non-zero")
+    mean = sum(k * w for k, w in weights.items()) / total
+    variance = sum(w * (k - mean) ** 2 for k, w in weights.items()) / total
+    return {"mean": mean, "variance": variance, "sd": variance ** 0.5}
+
+
+def dar_lcms_reduced_uncertainty(
+    light_chain: Mapping[int, float],
+    heavy_chain: Mapping[int, float],
+) -> dict:
+    """Reduced LC-MS DAR with an SD from per-chain load heterogeneity.
+
+    DAR = 2*mean(LC) + 2*mean(HC). Treating the two light chains and two heavy
+    chains as independent draws from their measured load distributions, the
+    variance of the sum is 2*var(LC) + 2*var(HC); sigma_dar is its square root.
+    Also returns each chain's SD so an asymmetric contributor is visible.
+    """
+    lc = distribution_dispersion(light_chain)
+    hc = distribution_dispersion(heavy_chain)
+    dar = 2 * lc["mean"] + 2 * hc["mean"]
+    variance = 2 * lc["variance"] + 2 * hc["variance"]
+    sigma_dar = variance ** 0.5
+    return {
+        "dar": dar,
+        "sigma_dar": sigma_dar,
+        "light_sd": lc["sd"],
+        "heavy_sd": hc["sd"],
+        "ci95_low": dar - 1.96 * sigma_dar,
+        "ci95_high": dar + 1.96 * sigma_dar,
     }
 
 
