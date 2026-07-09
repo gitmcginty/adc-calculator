@@ -11,6 +11,7 @@ M^-1 cm^-1; mass extinction coefficients in (mg/mL)^-1 cm^-1.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from math import comb
 from typing import Mapping
 
 # --------------------------------------------------------------------------
@@ -113,6 +114,58 @@ def conc_unknown_payload_eps(
     return (a280 - a_lp_280) * dilution_factor / eps280_mab_mass
 
 
+def scatter_absorbance(
+    a_ref: float,
+    ref_wavelength: float,
+    target_wavelength: float,
+    exponent: float = 4.0,
+) -> float:
+    """Estimate the light-scattering baseline at ``target_wavelength``.
+
+    Turbid or aggregated samples scatter light with a strong wavelength
+    dependence: Rayleigh-type scattering falls off as ``lambda^-4``, so a
+    baseline read at a wavelength where neither antibody nor payload absorbs
+    (typically 320-340 nm) can be extrapolated to the analytical wavelengths.
+
+        A_scatter(lambda) = A_ref * (ref_wavelength / lambda) ^ exponent
+
+    ``exponent`` defaults to 4 (Rayleigh); empirically fitted exponents for
+    protein aggregates are often 2-4, so it is exposed as a parameter.
+    """
+    if ref_wavelength <= 0 or target_wavelength <= 0:
+        raise ValueError("wavelengths must be positive")
+    return a_ref * (ref_wavelength / target_wavelength) ** exponent
+
+
+def scatter_corrected_absorbance(
+    a280: float,
+    a_lmax: float,
+    a_ref: float,
+    ref_wavelength: float = 320.0,
+    lmax_wavelength: float = 495.0,
+    exponent: float = 4.0,
+) -> dict:
+    """Subtract the extrapolated scattering baseline from both UV/Vis reads.
+
+    Given a scattering reference read ``a_ref`` at ``ref_wavelength`` (a region
+    free of chromophore absorbance), returns the scatter-corrected A280 and
+    A_lmax that should be fed to :func:`dar_uv` / :func:`adc_properties` so the
+    DAR and concentration are not biased high by turbidity.
+
+    Returns a dict with the corrected absorbances and the scatter estimates.
+    Corrected absorbances are floored at 0 (a negative value means the
+    reference read over-estimated the baseline and is physically meaningless).
+    """
+    s280 = scatter_absorbance(a_ref, ref_wavelength, 280.0, exponent)
+    slmax = scatter_absorbance(a_ref, ref_wavelength, lmax_wavelength, exponent)
+    return {
+        "a280_corrected": max(a280 - s280, 0.0),
+        "a_lmax_corrected": max(a_lmax - slmax, 0.0),
+        "scatter_280": s280,
+        "scatter_lmax": slmax,
+    }
+
+
 # ==========================================================================
 # 4. Ellman's free-thiol assay  (spec §4; PDF p.10)
 # ==========================================================================
@@ -148,6 +201,61 @@ def dar_species_fractions(auc_by_species: Mapping[int, float]) -> dict[int, floa
     if total == 0:
         raise ValueError("Total AUC must be non-zero")
     return {k: a / total * 100.0 for k, a in auc_by_species.items()}
+
+
+def _species_molar_abundance(
+    auc_by_species: Mapping[int, float],
+    eps280_mab: float,
+    eps280_payload: float,
+) -> dict[int, float]:
+    """Convert 280 nm peak areas to *molar* abundance per DAR species.
+
+    In HIC-UV280 the measured area of a DAR-k species is
+    ``A_k = c_k * eps_k`` with ``eps_k = eps280_mab + k*eps280_payload`` (the
+    payload absorbs at 280 nm, so each additional drug adds to the molar
+    extinction). Molar abundance is therefore ``c_k proportional to A_k/eps_k``.
+    Dividing area by eps_k removes the bias that otherwise over-weights
+    high-DAR peaks and inflates the average DAR.
+    """
+    mol = {}
+    for k, a in auc_by_species.items():
+        eps_k = eps280_mab + k * eps280_payload
+        if eps_k <= 0:
+            raise ValueError("per-species eps280 must be > 0")
+        mol[k] = a / eps_k
+    return mol
+
+
+def dar_hic_corrected(
+    auc_by_species: Mapping[int, float],
+    eps280_mab: float,
+    eps280_payload: float,
+) -> float:
+    """Drug-load-corrected average DAR from HIC-UV280 peak areas.
+
+    Divides each peak area by that species' 280 nm molar extinction
+    ``eps280_mab + k*eps280_payload`` before taking the abundance-weighted
+    mean, so area% is converted to molar% first. Reduces to :func:`dar_hic`
+    only when ``eps280_payload == 0`` (payload transparent at 280 nm).
+    """
+    mol = _species_molar_abundance(auc_by_species, eps280_mab, eps280_payload)
+    total = sum(mol.values())
+    if total == 0:
+        raise ValueError("Total corrected abundance must be non-zero")
+    return sum(k * m for k, m in mol.items()) / total
+
+
+def dar_species_fractions_corrected(
+    auc_by_species: Mapping[int, float],
+    eps280_mab: float,
+    eps280_payload: float,
+) -> dict[int, float]:
+    """Molar percentage of each DAR species after 280 nm eps correction."""
+    mol = _species_molar_abundance(auc_by_species, eps280_mab, eps280_payload)
+    total = sum(mol.values())
+    if total == 0:
+        raise ValueError("Total corrected abundance must be non-zero")
+    return {k: m / total * 100.0 for k, m in mol.items()}
 
 
 # ==========================================================================
@@ -876,18 +984,31 @@ def dar_uv_uncertainty(
     eps_lmax_lp: float,
     sigma_a280: float = 0.0,
     sigma_a_lmax: float = 0.0,
+    sigma_eps280_mab: float = 0.0,
+    sigma_eps_lmax_mab: float = 0.0,
+    sigma_eps280_lp: float = 0.0,
+    sigma_eps_lmax_lp: float = 0.0,
 ) -> dict:
-    """UV/Vis DAR with a 1-sigma error propagated from the two absorbance reads.
+    """UV/Vis DAR with a 1-sigma error propagated from every input quantity.
 
-    DAR depends on the measurements only through the ratio R = a_lmax / a280,
-    so first-order (Gaussian) propagation gives
+    DAR = (eps_lmax_mab - R*eps280_mab) / (R*eps280_lp - eps_lmax_lp),
+    R = a_lmax / a280. First-order (Gaussian) propagation sums independent
+    contributions in quadrature:
 
+      * absorbance reads enter only through R, so
         sigma_R  = |R| * sqrt((sigma_a280/a280)^2 + (sigma_a_lmax/a_lmax)^2)
-        sigma_DAR = |dDAR/dR| * sigma_R,
+        and their contribution is |dDAR/dR| * sigma_R;
+      * the four extinction coefficients contribute via their analytic
+        partials of DAR (denom = R*eps280_lp - eps_lmax_lp, numer = the DAR
+        numerator):
+            dDAR/d(eps_lmax_mab) =  1/denom
+            dDAR/d(eps280_mab)   = -R/denom
+            dDAR/d(eps280_lp)    = -numer*R/denom^2
+            dDAR/d(eps_lmax_lp)  =  numer/denom^2
 
-    with the analytic derivative of DAR(R). A symmetric 95% interval uses
-    1.96*sigma_DAR. Zero input sigmas give sigma_DAR = 0 and a degenerate
-    interval equal to the point estimate.
+    A symmetric 95% interval uses 1.96*sigma_DAR. Zero input sigmas give
+    sigma_DAR = 0 and a degenerate interval equal to the point estimate, so
+    the extra terms are fully backward-compatible with the read-only form.
     """
     if a280 == 0:
         raise ValueError("A280 must be non-zero")
@@ -907,7 +1028,17 @@ def dar_uv_uncertainty(
     if sigma_a_lmax:
         rel_var += (sigma_a_lmax / a_lmax) ** 2
     sigma_r = abs(r) * (rel_var ** 0.5)
-    sigma_dar = abs(d_dar_d_r) * sigma_r
+    var = (d_dar_d_r * sigma_r) ** 2
+    # extinction-coefficient partials, added in quadrature
+    if sigma_eps_lmax_mab:
+        var += ((1.0 / denom) * sigma_eps_lmax_mab) ** 2
+    if sigma_eps280_mab:
+        var += ((-r / denom) * sigma_eps280_mab) ** 2
+    if sigma_eps280_lp:
+        var += ((-numer * r / denom ** 2) * sigma_eps280_lp) ** 2
+    if sigma_eps_lmax_lp:
+        var += ((numer / denom ** 2) * sigma_eps_lmax_lp) ** 2
+    sigma_dar = var ** 0.5
     return {
         "dar": dar,
         "sigma_dar": sigma_dar,
@@ -932,6 +1063,61 @@ def distribution_dispersion(weights: Mapping[int, float]) -> dict:
     mean = sum(k * w for k, w in weights.items()) / total
     variance = sum(w * (k - mean) ** 2 for k, w in weights.items()) / total
     return {"mean": mean, "variance": variance, "sd": variance ** 0.5}
+
+
+def predict_dar_distribution(
+    n_sites: int,
+    p_site: float | None = None,
+    feed_ratio: float | None = None,
+    efficiency: float = 1.0,
+) -> dict:
+    """Predict the full DAR distribution from a binomial site-occupancy model.
+
+    Conjugation to ``n_sites`` equivalent, independent sites (e.g. the 8
+    interchain cysteines exposed by full reduction of an IgG1) is modelled as
+    ``n_sites`` Bernoulli trials each occupied with probability ``p_site``.
+    The number of drugs per antibody is then Binomial(n_sites, p_site):
+
+        P(DAR=k) = C(n, k) p^k (1-p)^(n-k),  k = 0..n
+        mean DAR = n*p,   variance = n*p*(1-p)
+
+    Two ways to set the occupancy probability:
+
+    * ``p_site`` directly (0..1), or
+    * ``feed_ratio`` (drug:mAb molar feed) times ``efficiency`` (fraction of
+      offered drug that actually conjugates), spread over the sites:
+      ``p_site = feed_ratio * efficiency / n_sites``.
+
+    Returns the per-species probabilities plus mean/variance/SD (computed via
+    :func:`distribution_dispersion` so the moment definitions never drift).
+    The SD is the intrinsic drug-load *heterogeneity* the model predicts, not a
+    measurement error.
+    """
+    if n_sites < 1:
+        raise ValueError("n_sites must be >= 1")
+    if p_site is None:
+        if feed_ratio is None:
+            raise ValueError("provide either p_site or feed_ratio")
+        if feed_ratio < 0 or efficiency < 0:
+            raise ValueError("feed_ratio and efficiency must be >= 0")
+        p_site = (feed_ratio * efficiency) / n_sites
+    if not (0.0 <= p_site <= 1.0):
+        raise ValueError(
+            "implied per-site probability outside [0,1]; "
+            "feed_ratio*efficiency exceeds n_sites"
+        )
+    dist = {
+        k: comb(n_sites, k) * p_site ** k * (1.0 - p_site) ** (n_sites - k)
+        for k in range(n_sites + 1)
+    }
+    disp = distribution_dispersion(dist)
+    return {
+        "p_site": p_site,
+        "distribution": dist,
+        "mean_dar": disp["mean"],
+        "variance": disp["variance"],
+        "sd": disp["sd"],
+    }
 
 
 def dar_lcms_reduced_uncertainty(
