@@ -351,6 +351,31 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
           <p class="sub" style="margin:-2px 0 8px">Enter absorbance read errors to propagate a 95% confidence interval onto the DAR. Leave blank to skip.</p>
 
           <details class="advanced">
+            <summary>Advanced &middot; &epsilon; uncertainty (optional)</summary>
+            <div class="advanced-body">
+              <p class="sub" style="margin:0 0 6px">1&sigma; uncertainties on the extinction coefficients &mdash; folded into the DAR CI in quadrature. For most conjugates the payload &epsilon; error dominates the read error.</p>
+              <div class="grid cols3">
+                <label class="field"><span>&sigma; &epsilon;280 mAb <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_se280mab" type="number" step="any" min="0" placeholder="e.g. 2030"></label>
+                <label class="field"><span>&sigma; &epsilon;280 LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_se280lp" type="number" step="any" min="0" placeholder="e.g. 364"></label>
+                <label class="field"><span>&sigma; &epsilon;&lambda;max LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_selmaxlp" type="number" step="any" min="0" placeholder="e.g. 481"></label>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced">
+            <summary>Advanced &middot; scattering / turbidity correction (optional)</summary>
+            <div class="advanced-body">
+              <p class="sub" style="margin:0 0 6px">Turbid or aggregated samples scatter light and read high. Enter a baseline absorbance at a wavelength where nothing absorbs (typ. 320&ndash;340 nm); a Rayleigh (&lambda;&#8315;&#8308;) baseline is extrapolated to 280 nm and &lambda;max and subtracted before the DAR/concentration are computed.</p>
+              <div class="grid cols3">
+                <label class="field"><span>A ref <span class="unit">(AU, baseline)</span></span><input id="uv_aref" type="number" step="any" min="0" placeholder="e.g. 0.05"></label>
+                <label class="field"><span>Ref &lambda; <span class="unit">(nm)</span></span><input id="uv_refwl" type="number" step="any" min="0" value="320"></label>
+                <label class="field"><span>Payload &lambda;max <span class="unit">(nm)</span></span><input id="uv_lmaxwl" type="number" step="any" min="0" value="495"></label>
+              </div>
+              <label class="field"><span>Scatter exponent <span class="unit">(4 = Rayleigh)</span></span><input id="uv_scatexp" type="number" step="0.1" min="0" value="4"></label>
+            </div>
+          </details>
+
+          <details class="advanced">
             <summary>Advanced &middot; constants</summary>
             <div class="advanced-body">
               <div class="grid">
@@ -381,12 +406,23 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 
     <!-- ---- HIC method ---- -->
     <div class="method" id="method-hic">
-      <div class="formula">DAR = &Sigma;(AUC&#7522; &middot; i) / &Sigma;AUC&#7522;</div>
+      <div class="formula">DAR = &Sigma;(f&#7522; &middot; i) / &Sigma;f&#7522;,   f&#7522; = AUC&#7522; / (&epsilon;280,mAb + i&middot;&epsilon;280,LP)</div>
       <div class="split">
         <div>
-          <p class="sub">Enter peak area for each DAR species:</p>
+          <p class="sub">Enter peak area (A280) for each DAR species:</p>
           <div id="hic_rows"></div>
           <div class="btnrow"><button class="ghost" onclick="addHicRow()">+ Add species</button></div>
+          <label class="field" style="margin-top:10px"><input type="checkbox" id="hic_correct" onchange="calcHic()" style="width:auto;margin-right:6px"> Correct for payload 280&nbsp;nm absorbance (recommended)</label>
+          <p class="sub" style="margin:-2px 0 8px">A280-detected HIC over-weights high-DAR peaks because the payload also absorbs at 280&nbsp;nm. When enabled, each peak area is divided by its species &epsilon;280 to recover molar abundance.</p>
+          <details class="advanced">
+            <summary>Advanced &middot; extinction coefficients</summary>
+            <div class="advanced-body">
+              <div class="grid">
+                <label class="field"><span>&epsilon;280 antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="hic_e280mab" type="number" min="0" step="any" value="203000" onchange="calcHic()"></label>
+                <label class="field"><span>&epsilon;280 payload <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="hic_e280lp" type="number" min="0" step="any" value="5000" onchange="calcHic()"></label>
+              </div>
+            </div>
+          </details>
         </div>
         <div><div class="results" id="hic_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('hic')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_hic_msg" style="align-self:center"></span></div></div>
       </div>
@@ -443,6 +479,33 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('conj')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_conj_msg" style="align-self:center"></span></div>
         <div class="note" id="cj_notes"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Predicted DAR distribution</h2>
+    <p class="desc">Model the drug-load distribution from a binomial site-occupancy model: each of <em>n</em> equivalent, independent conjugation sites is occupied with probability <em>p</em>. Set <em>p</em> directly, or derive it from the drug:antibody feed ratio and coupling efficiency.</p>
+    <div class="formula">P(DAR=k) = C(n,k) p&#7503; (1&minus;p)&#8319;&#8315;&#7503;,   mean = np,   variance = np(1&minus;p)</div>
+    <div class="split">
+      <div>
+        <div class="grid cols3">
+          <label class="field"><span>Conjugation sites <span class="unit">n</span></span><input id="pd_nsites" type="number" min="1" step="1" value="8" oninput="calcDarDist()"></label>
+          <label class="field"><span>Occupancy mode</span><select id="pd_mode" onchange="calcDarDist()">
+            <option value="feed">From feed ratio &amp; efficiency</option>
+            <option value="psite">Direct occupancy p</option>
+          </select></label>
+          <label class="field" id="pd_psite_field" style="display:none"><span>Occupancy p <span class="unit">(0&ndash;1)</span></span><input id="pd_psite" type="number" min="0" max="1" step="0.01" value="0.5" oninput="calcDarDist()"></label>
+        </div>
+        <div class="grid" id="pd_feed_fields">
+          <label class="field"><span>Drug : antibody feed ratio</span><input id="pd_feed" type="number" min="0" step="0.1" value="5" oninput="calcDarDist()"></label>
+          <label class="field"><span>Coupling efficiency <span class="unit">(0&ndash;1)</span></span><input id="pd_eff" type="number" min="0" max="1" step="0.05" value="0.8" oninput="calcDarDist()"></label>
+        </div>
+        <div class="pillrow">
+          <button onclick="darDistPreset('thiomab')">Thiomab (n=2)</button>
+          <button onclick="darDistPreset('cys8')">Full-reduction Cys (n=8)</button>
+        </div>
+      </div>
+      <div class="sticky-side"><div class="results" id="pd_out"></div></div>
     </div>
   </div>
 </section>
@@ -748,6 +811,25 @@ function concUnknownPayloadEps(a280, aLmax, eps280Lp, epsLmaxLp,
   return ((a280 - aLp280) * dilutionFactor) / eps280MabMass;
 }
 
+function scatterAbsorbance(aRef, refWavelength, targetWavelength, exponent = 4.0) {
+  if (refWavelength <= 0 || targetWavelength <= 0) throw new Error("wavelengths must be positive");
+  return aRef * Math.pow(refWavelength / targetWavelength, exponent);
+}
+
+function scatterCorrectedAbsorbance(a280, aLmax, aRef,
+                                    refWavelength = 320.0,
+                                    lmaxWavelength = 495.0,
+                                    exponent = 4.0) {
+  const s280 = scatterAbsorbance(aRef, refWavelength, 280.0, exponent);
+  const sLmax = scatterAbsorbance(aRef, refWavelength, lmaxWavelength, exponent);
+  return {
+    a280Corrected: Math.max(a280 - s280, 0.0),
+    aLmaxCorrected: Math.max(aLmax - sLmax, 0.0),
+    scatter280: s280,
+    scatterLmax: sLmax,
+  };
+}
+
 // ── 4. Ellman's free-thiol assay (PDF p.10) ────────────────────────────────
 function ellmanFreeThiols(a412, a280, eps280Mab, eps412 = ELLMAN_E412) {
   if (a280 === 0) throw new Error("A280 must be non-zero");
@@ -770,6 +852,34 @@ function darSpeciesFractions(aucBySpecies) {
   if (total === 0) throw new Error("Total AUC must be non-zero");
   const out = {};
   for (const [k, a] of Object.entries(aucBySpecies)) out[k] = (a / total) * 100.0;
+  return out;
+}
+
+function _speciesMolarAbundance(aucBySpecies, eps280Mab, eps280Payload) {
+  const mol = {};
+  for (const [k, a] of Object.entries(aucBySpecies)) {
+    const epsK = eps280Mab + Number(k) * eps280Payload;
+    if (epsK <= 0) throw new Error("per-species eps280 must be > 0");
+    mol[k] = a / epsK;
+  }
+  return mol;
+}
+
+function darHICCorrected(aucBySpecies, eps280Mab, eps280Payload) {
+  const mol = _speciesMolarAbundance(aucBySpecies, eps280Mab, eps280Payload);
+  const total = _total(mol);
+  if (total === 0) throw new Error("Total corrected abundance must be non-zero");
+  let num = 0;
+  for (const [k, m] of Object.entries(mol)) num += Number(k) * m;
+  return num / total;
+}
+
+function darSpeciesFractionsCorrected(aucBySpecies, eps280Mab, eps280Payload) {
+  const mol = _speciesMolarAbundance(aucBySpecies, eps280Mab, eps280Payload);
+  const total = _total(mol);
+  if (total === 0) throw new Error("Total corrected abundance must be non-zero");
+  const out = {};
+  for (const [k, m] of Object.entries(mol)) out[k] = (m / total) * 100.0;
   return out;
 }
 
@@ -1128,7 +1238,9 @@ function extinctionCoefficient(concentrationsM, absorbances, pathLengthCm = 1.0)
 // ── 9b. Uncertainty / error propagation ─────────────────────────────────────
 // UV DAR depends on the reads only via R=aLmax/a280; sigma_DAR=|dDAR/dR|*sigma_R.
 function darUVUncertainty(a280, aLmax, eps280Mab, epsLmaxMab, eps280Lp, epsLmaxLp,
-                          sigmaA280 = 0.0, sigmaALmax = 0.0) {
+                          sigmaA280 = 0.0, sigmaALmax = 0.0,
+                          sigmaEps280Mab = 0.0, sigmaEpsLmaxMab = 0.0,
+                          sigmaEps280Lp = 0.0, sigmaEpsLmaxLp = 0.0) {
   if (a280 === 0) throw new Error("A280 must be non-zero");
   if (aLmax === 0 && sigmaALmax !== 0.0) throw new Error("A_lmax must be non-zero to propagate its error");
   const r = aLmax / a280;
@@ -1141,7 +1253,12 @@ function darUVUncertainty(a280, aLmax, eps280Mab, epsLmaxMab, eps280Lp, epsLmaxL
   if (sigmaA280) relVar += (sigmaA280 / a280) ** 2;
   if (sigmaALmax) relVar += (sigmaALmax / aLmax) ** 2;
   const sigmaR = Math.abs(r) * Math.sqrt(relVar);
-  const sigmaDar = Math.abs(dDarDr) * sigmaR;
+  let variance = (dDarDr * sigmaR) ** 2;
+  if (sigmaEpsLmaxMab) variance += ((1.0 / denom) * sigmaEpsLmaxMab) ** 2;
+  if (sigmaEps280Mab) variance += ((-r / denom) * sigmaEps280Mab) ** 2;
+  if (sigmaEps280Lp) variance += ((-numer * r / (denom * denom)) * sigmaEps280Lp) ** 2;
+  if (sigmaEpsLmaxLp) variance += ((numer / (denom * denom)) * sigmaEpsLmaxLp) ** 2;
+  const sigmaDar = Math.sqrt(variance);
   return { dar, sigmaDar, ci95Low: dar - 1.96 * sigmaDar, ci95High: dar + 1.96 * sigmaDar,
            sigmaR, relSigma: dar !== 0 ? sigmaDar / dar : null };
 }
@@ -1153,6 +1270,38 @@ function distributionDispersion(weights) {
   let mean = 0; for (const k of ks) mean += Number(k) * weights[k]; mean /= total;
   let variance = 0; for (const k of ks) variance += weights[k] * (Number(k) - mean) ** 2; variance /= total;
   return { mean, variance, sd: Math.sqrt(variance) };
+}
+// Exact binomial coefficient C(n,k) via a multiplicative loop (no factorial
+// overflow for the small site counts used in ADC conjugation).
+function _binomCoeff(n, k) {
+  if (k < 0 || k > n) return 0;
+  if (k === 0 || k === n) return 1;
+  k = Math.min(k, n - k);
+  let c = 1;
+  for (let i = 0; i < k; i++) c = (c * (n - i)) / (i + 1);
+  return Math.round(c);
+}
+// Predict the full DAR distribution from a binomial site-occupancy model:
+// n_sites independent sites each occupied with probability p_site, so drug
+// count ~ Binomial(n_sites, p_site). Set p_site directly, or derive it from
+// feed_ratio*efficiency/n_sites. Moments via distributionDispersion.
+function predictDarDistribution(nSites, { pSite = null, feedRatio = null, efficiency = 1.0 } = {}) {
+  if (nSites < 1) throw new Error("n_sites must be >= 1");
+  let p = pSite;
+  if (p === null || p === undefined) {
+    if (feedRatio === null || feedRatio === undefined) throw new Error("provide either pSite or feedRatio");
+    if (feedRatio < 0 || efficiency < 0) throw new Error("feedRatio and efficiency must be >= 0");
+    p = (feedRatio * efficiency) / nSites;
+  }
+  if (!(p >= 0.0 && p <= 1.0)) {
+    throw new Error("implied per-site probability outside [0,1]; feedRatio*efficiency exceeds n_sites");
+  }
+  const dist = {};
+  for (let k = 0; k <= nSites; k++) {
+    dist[k] = _binomCoeff(nSites, k) * p ** k * (1.0 - p) ** (nSites - k);
+  }
+  const disp = distributionDispersion(dist);
+  return { pSite: p, distribution: dist, meanDar: disp.mean, variance: disp.variance, sd: disp.sd };
 }
 // Reduced LC-MS DAR SD: var = 2var(LC)+2var(HC) (2 light + 2 heavy chains, independent).
 function darLcmsReducedUncertainty(lightChain, heavyChain) {
@@ -1263,7 +1412,16 @@ function selfCheck() {
   results.push(ok(pB.mwAdc, 148765.04893978272, "MW_ADC case B"));
   results.push(ok(pB.concMgml, 5.011743075614535, "conc mg/mL case B"));
   results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0), 11.955241460541815, "Ellman"));
+  results.push(ok(scatterAbsorbance(0.05, 320.0, 280.0, 4.0), 0.08529779258642231, "scatter@280"));
+  const scc = scatterCorrectedAbsorbance(1.0, 0.5, 0.05, 320.0, 495.0, 4.0);
+  results.push(ok(scc.a280Corrected, 0.9147022074135777, "scatter-corrected A280"));
+  results.push(ok(scc.aLmaxCorrected, 0.49126728831613614, "scatter-corrected A_lmax"));
+  results.push(ok(scc.scatterLmax, 0.008732711683863857, "scatter@lmax"));
   results.push(ok(darHIC({ 0: 5, 1: 15, 2: 45, 3: 25, 4: 10 }), 2.2, "HIC"));
+  results.push(ok(darHICCorrected({ 0: 10, 2: 50, 4: 30, 6: 10 }, 203000.0, 5000.0), 2.741596270777426, "HIC corrected"));
+  results.push(ok(darHICCorrected({ 0: 5, 1: 15, 2: 45, 3: 25, 4: 10 }, 203000.0, 0.0), 2.2, "HIC corrected reduces to uncorrected"));
+  const hicFrac = darSpeciesFractionsCorrected({ 0: 10, 2: 50, 4: 30, 6: 10 }, 203000.0, 5000.0);
+  results.push(ok(hicFrac[2], 50.870418158189466, "HIC corrected fraction DAR2"));
   results.push(ok(darLcmsReduced({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }), 5.2, "LC-MS reduced"));
   const _bd = darLcmsReducedBreakdown({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
   results.push(ok(_bd.light.contribution, 1.8, "LC-MS breakdown LC 2*mean"));
@@ -1285,7 +1443,16 @@ function selfCheck() {
   results.push("PASS extinction coefficient (regression)");
   const uu=darUVUncertainty(A280,A_LMAX,EPS280_MAB,0.0,EPS280_LP,EPS_LMAX_LP,0.01,0.01);
   ok(uu.dar,2.4140809554780795,"DAR unc point"); ok(uu.sigmaDar,0.03370113601940267,"DAR unc sigma");
+  const uue=darUVUncertainty(A280,A_LMAX,EPS280_MAB,0.0,EPS280_LP,EPS_LMAX_LP,0.01,0.01,2030.0,0.0,364.35,481.2);
+  ok(uue.sigmaDar,0.13795625467477654,"DAR unc sigma (with eps terms)");
   ok(distributionDispersion({0:5,1:15,2:45,3:25,4:10}).sd,0.9797958971132712,"HIC dispersion sd");
+  const pd = predictDarDistribution(4, { feedRatio: 2.5, efficiency: 0.8 });
+  results.push(ok(pd.pSite, 0.5, "DAR dist p_site"));
+  results.push(ok(pd.meanDar, 2.0, "DAR dist mean"));
+  results.push(ok(pd.sd, 1.0, "DAR dist sd"));
+  results.push(ok(pd.distribution[2], 0.375, "DAR dist P(k=2)"));
+  const pd2 = predictDarDistribution(4, { pSite: 0.5 });
+  results.push(ok(pd2.meanDar, 2.0, "DAR dist via p_site"));
   ok(darLcmsReducedUncertainty({0:10,1:90},{0:5,1:20,2:75}).sigmaDar,0.8944271909999159,"LC-MS reduced sigma");
   results.push("PASS uncertainty (UV / HIC / LC-MS)");
   const dp = planSerialDilution({ stockUM: 1000, topUM: 10, fold: 4, nPoints: 4,
@@ -1335,7 +1502,9 @@ function selfCheck() {
 // through `ADC.*` and never re-implements any formula.
 const ADC = {
   epsMassToMolar, epsMolarToMass, darUV, adcProperties, concUnknownPayloadEps,
-  ellmanFreeThiols, darHIC, darSpeciesFractions, darLcmsReduced, darLcmsIntact,
+  scatterAbsorbance, scatterCorrectedAbsorbance,
+  ellmanFreeThiols, darHIC, darSpeciesFractions,
+  darHICCorrected, darSpeciesFractionsCorrected, darLcmsReduced, darLcmsIntact,
   darLcmsReducedBreakdown,
   molesFromMass, reagentVolumeUL, planConjugation, yieldAndFormulation,
   planSerialDilution, plateWellVolume, PLATE_WELL_VOLUME_UL,
@@ -1344,6 +1513,7 @@ const ADC = {
   assignSelection, aggregateDosingPlans,
   linearRegression, extinctionCoefficient,
   darUVUncertainty, distributionDispersion, darLcmsReducedUncertainty,
+  predictDarDistribution,
   getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
   makeRegistryRecord, registryToCsv, summarizeRegistry, REGISTRY_FIELDS,
 };
@@ -1693,7 +1863,7 @@ function setDarMethod(m) {
 
 // ================= UV/Vis DAR =================
 function calcUV() {
-  const a280 = num("uv_a280"), almax = num("uv_almax"), df = num("uv_df");
+  let a280 = num("uv_a280"), almax = num("uv_almax"); const df = num("uv_df");
   const mwMab = num("uv_mwmab"), e280MabMass = num("uv_e280mab_mass");
   const e280Mab = ADC.epsMassToMolar(e280MabMass, mwMab);
   const elmaxMab = num("uv_elmaxmab");
@@ -1701,17 +1871,31 @@ function calcUV() {
   const out = $("uv_out");
   if (Number.isNaN(a280) || Number.isNaN(almax)) { out.innerHTML = placeholder("Enter A280 and A\u03bbmax"); return; }
   try {
+    // optional scattering / turbidity baseline correction (applied before everything else)
+    const aRef = num("uv_aref");
+    let scatterRow = "";
+    if (!Number.isNaN(aRef) && aRef > 0) {
+      const refWl = num("uv_refwl"), lmaxWl = num("uv_lmaxwl"), exp = num("uv_scatexp");
+      const sc = ADC.scatterCorrectedAbsorbance(a280, almax, aRef,
+                   Number.isNaN(refWl) ? 320 : refWl, Number.isNaN(lmaxWl) ? 495 : lmaxWl,
+                   Number.isNaN(exp) ? 4 : exp);
+      scatterRow = rrow("Scatter baseline @280 / @&lambda;max", `${fmt(sc.scatter280, 4)} / ${fmt(sc.scatterLmax, 4)} AU`)
+                 + rrow("Corrected A280 / A&lambda;max", `${fmt(sc.a280Corrected, 4)} / ${fmt(sc.aLmaxCorrected, 4)} AU`);
+      a280 = sc.a280Corrected; almax = sc.aLmaxCorrected;
+    }
     const dar = ADC.darUV(a280, almax, e280Mab, elmaxMab, e280Lp, elmaxLp);
     const p = ADC.adcProperties(dar, mwMab, mwLp, e280Mab, e280Lp, a280, df);
     const cUnk = ADC.concUnknownPayloadEps(a280, almax, e280Lp, elmaxLp, e280MabMass, df);
-    // optional error propagation onto DAR
+    // optional error propagation onto DAR (absorbance reads + extinction coefficients)
     const sA280 = num("uv_sa280"), sAlmax = num("uv_salmax");
-    const hasSig = (!Number.isNaN(sA280) && sA280 > 0) || (!Number.isNaN(sAlmax) && sAlmax > 0);
+    const sE280Mab = num("uv_se280mab"), sE280Lp = num("uv_se280lp"), sElmaxLp = num("uv_selmaxlp");
+    const g = (x) => (Number.isNaN(x) || x < 0) ? 0 : x;
+    const hasSig = [sA280, sAlmax, sE280Mab, sE280Lp, sElmaxLp].some((x) => !Number.isNaN(x) && x > 0);
     let darCell = fmt(dar, 3);
     let ciRow = "";
     if (hasSig) {
       const u = ADC.darUVUncertainty(a280, almax, e280Mab, elmaxMab, e280Lp, elmaxLp,
-                                     Number.isNaN(sA280) ? 0 : sA280, Number.isNaN(sAlmax) ? 0 : sAlmax);
+                                     g(sA280), g(sAlmax), g(sE280Mab), 0, g(sE280Lp), g(sElmaxLp));
       darCell = `${fmt(dar, 3)} &plusmn; ${fmt(u.sigmaDar, 3)}`;
       ciRow = rrow("DAR 95% CI", `${fmt(u.ci95Low, 3)} &ndash; ${fmt(u.ci95High, 3)}`)
             + rrow("DAR relative &sigma;", u.relSigma === null ? "&mdash;" : fmt(100 * u.relSigma, 1) + "%");
@@ -1725,6 +1909,7 @@ function calcUV() {
     out.innerHTML = "<h3>Results</h3>"
       + `<div class="rrow primary"><span class="k">DAR (drug : antibody)</span><span class="v${darNeg ? " neg" : ""}">${darCell}</span></div>`
       + ciRow
+      + scatterRow
       + rrow("&epsilon;280 antibody (molar)", fmt(e280Mab, 0) + " M&#8315;&#185;cm&#8315;&#185;")
       + rrow("ADC MW", fmt(p.mwAdc, 1) + " g/mol")
       + rrow("&epsilon;280 ADC (molar)", fmt(p.eps280AdcMolar, 0) + " M&#8315;&#185;cm&#8315;&#185;")
@@ -1849,15 +2034,60 @@ function renderHic() {
 function addHicRow() { hicSpecies.push({ k: hicSpecies.length, a: 0 }); renderHic(); calcHic(); }
 function calcHic() {
   const map = {}; hicSpecies.forEach((s) => { map[s.k] = (map[s.k] || 0) + s.a; });
+  const correct = $("hic_correct") && $("hic_correct").checked;
   try {
-    const dar = ADC.darHIC(map), frac = ADC.darSpeciesFractions(map);
+    let dar, frac, corrRow = "";
+    if (correct) {
+      const e280Mab = num("hic_e280mab"), e280Lp = num("hic_e280lp");
+      const darRaw = ADC.darHIC(map);
+      dar = ADC.darHICCorrected(map, e280Mab, e280Lp);
+      frac = ADC.darSpeciesFractionsCorrected(map, e280Mab, e280Lp);
+      corrRow = rrow("Uncorrected DAR (A280 as molar)", fmt(darRaw, 3))
+              + rrow("&epsilon;280 correction", "applied (mAb " + fmt(e280Mab, 0) + ", LP " + fmt(e280Lp, 0) + ")");
+    } else {
+      dar = ADC.darHIC(map); frac = ADC.darSpeciesFractions(map);
+    }
     const disp = ADC.distributionDispersion(map);
     let html = "<h3>Results</h3>" + rrow("Average DAR", fmt(dar, 3), "primary")
-      + rrow("Load heterogeneity (SD)", "&plusmn; " + fmt(disp.sd, 3) + " drugs")
-      + "<h3 style='margin-top:14px'>Species distribution</h3>";
+      + corrRow
+      + rrow("Load heterogeneity (SD, by area)", "&plusmn; " + fmt(disp.sd, 3) + " drugs")
+      + "<h3 style='margin-top:14px'>Species distribution" + (correct ? " (molar)" : "") + "</h3>";
     Object.keys(frac).sort((a, b) => a - b).forEach((k) => { html += rrow("DAR " + k, fmt(frac[k], 1) + " %"); });
     $("hic_out").innerHTML = html;
   } catch (e) { $("hic_out").innerHTML = placeholder("Enter peak areas for at least one species"); }
+}
+
+// ================= Predicted DAR distribution =================
+function calcDarDist() {
+  const mode = $("pd_mode").value;
+  $("pd_psite_field").style.display = mode === "psite" ? "" : "none";
+  $("pd_feed_fields").style.display = mode === "feed" ? "" : "none";
+  const n = parseInt($("pd_nsites").value) || 0;
+  const out = $("pd_out");
+  try {
+    let res;
+    if (mode === "psite") {
+      res = ADC.predictDarDistribution(n, { pSite: num("pd_psite") });
+    } else {
+      res = ADC.predictDarDistribution(n, { feedRatio: num("pd_feed"), efficiency: num("pd_eff") });
+    }
+    let html = "<h3>Results</h3>"
+      + rrow("Mean DAR", fmt(res.meanDar, 3), "primary")
+      + rrow("Site occupancy p", fmt(res.pSite, 4))
+      + rrow("Distribution SD", "&plusmn; " + fmt(res.sd, 3) + " drugs")
+      + rrow("Variance", fmt(res.variance, 4))
+      + "<h3 style='margin-top:14px'>Load distribution</h3>";
+    const probs = res.distribution;
+    Object.keys(probs).sort((a, b) => a - b).forEach((k) => {
+      html += rrow("DAR " + k, fmt(100 * probs[k], 2) + " %");
+    });
+    out.innerHTML = html;
+  } catch (e) { out.innerHTML = placeholder(e.message || "Enter valid n and occupancy"); }
+}
+function darDistPreset(kind) {
+  if (kind === "thiomab") { $("pd_nsites").value = 2; $("pd_mode").value = "feed"; $("pd_feed").value = 2.2; $("pd_eff").value = 0.95; }
+  else { $("pd_nsites").value = 8; $("pd_mode").value = "feed"; $("pd_feed").value = 8; $("pd_eff").value = 0.9; }
+  calcDarDist();
 }
 
 // ================= LC-MS =================
@@ -3120,6 +3350,7 @@ window.addEventListener("DOMContentLoaded", () => {
   populateDyeSelect();
   initBindings();
   conjPreset("thiomab");
+  calcDarDist();
   renderHic(); calcHic();
   setLcmsMode("reduced");
   setDarMethod("uv");
