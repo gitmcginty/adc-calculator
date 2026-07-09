@@ -28,10 +28,13 @@
   --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
   --s1:8px; --s2:16px; --s3:24px; --s4:32px;
 }
+/* Forced light: keep native controls (spinners, scrollbars) light even on a dark-OS machine. */
+:root[data-theme="light"]{ color-scheme:light; }
 /* Dark palette — shared by an explicit data-theme="dark" choice and, as a
    fallback for anyone who lands before the theme script runs, the OS setting.
    A manual choice (data-theme on <html>) always wins over the media query. */
 :root[data-theme="dark"]{
+  color-scheme:dark;   /* paint native controls (number spinners, scrollbars, pickers) dark */
   --bg:#16181c; --panel:#1e2127; --ink:#e8eaed; --muted:#9aa2ad; --faint:#6b7480;
   --line:#2c313a; --field:#23272e; --result:#23272e; --well:#1a1d22;
   --accent:#e8615f; --accent-soft:#3a2422; --accent-line:#4a2c2a; --accent-hover:#f07c7a; --on-accent:#1a1d21;
@@ -40,6 +43,7 @@
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme]){
+    color-scheme:dark;
     --bg:#16181c; --panel:#1e2127; --ink:#e8eaed; --muted:#9aa2ad; --faint:#6b7480;
     --line:#2c313a; --field:#23272e; --result:#23272e; --well:#1a1d22;
     --accent:#e8615f; --accent-soft:#3a2422; --accent-line:#4a2c2a; --accent-hover:#f07c7a; --on-accent:#1a1d21;
