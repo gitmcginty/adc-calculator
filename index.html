@@ -190,6 +190,7 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
 .dye-search{max-width:300px;margin-bottom:var(--s2)}
 /* species / concentration rows */
 .speciesrow{display:grid;grid-template-columns:70px 1fr 34px;gap:var(--s1);align-items:center;margin-bottom:8px}
+.speciesrow.corr{grid-template-columns:70px 1fr 1fr 34px}
 .speciesrow input{font-family:var(--mono)}
 .speciesrow button{background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer;color:var(--faint);height:36px}
 .speciesrow button:hover{border-color:var(--danger);color:var(--danger)}
@@ -351,6 +352,24 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
           <p class="sub" style="margin:-2px 0 8px">Enter absorbance read errors to propagate a 95% confidence interval onto the DAR. Leave blank to skip.</p>
 
           <details class="advanced">
+            <summary>Advanced &middot; constants</summary>
+            <div class="advanced-body">
+              <div class="grid">
+                <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="uv_mwmab" type="number" min="0" step="any" value="145000"></label>
+                <label class="field"><span>&epsilon;280 antibody <span class="unit">(mg/mL&middot;cm)&#8315;&#185;</span></span><input id="uv_e280mab_mass" type="number" min="0" step="0.01" value="1.4"></label>
+                <label class="field"><span>Dilution factor</span><input id="uv_df" type="number" min="0" step="0.1" value="1"></label>
+                <label class="field"><span>&epsilon;&lambda;max antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxmab" type="number" min="0" step="any" value="0"></label>
+              </div>
+              <p class="derived-note">Payload extinction coefficients (auto-filled from the library selection):</p>
+              <div class="grid cols3">
+                <label class="field"><span>LP MW <span class="unit">(g/mol)</span></span><input id="uv_mwlp" type="number" min="0" step="any" value="1559.62" readonly></label>
+                <label class="field"><span>&epsilon;280 LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_e280lp" type="number" min="0" step="any" value="7287" readonly></label>
+                <label class="field"><span>&epsilon;&lambda;max LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxlp" type="number" min="0" step="any" value="9624" readonly></label>
+              </div>
+            </div>
+          </details>
+
+          <details class="advanced">
             <summary>Advanced &middot; &epsilon; uncertainty (optional)</summary>
             <div class="advanced-body">
               <p class="sub" style="margin:0 0 6px">1&sigma; uncertainties on the extinction coefficients &mdash; folded into the DAR CI in quadrature. For most conjugates the payload &epsilon; error dominates the read error.</p>
@@ -372,24 +391,6 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
                 <label class="field"><span>Payload &lambda;max <span class="unit">(nm)</span></span><input id="uv_lmaxwl" type="number" step="any" min="0" value="495"></label>
               </div>
               <label class="field"><span>Scatter exponent <span class="unit">(4 = Rayleigh)</span></span><input id="uv_scatexp" type="number" step="0.1" min="0" value="4"></label>
-            </div>
-          </details>
-
-          <details class="advanced">
-            <summary>Advanced &middot; constants</summary>
-            <div class="advanced-body">
-              <div class="grid">
-                <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="uv_mwmab" type="number" min="0" step="any" value="145000"></label>
-                <label class="field"><span>&epsilon;280 antibody <span class="unit">(mg/mL&middot;cm)&#8315;&#185;</span></span><input id="uv_e280mab_mass" type="number" min="0" step="0.01" value="1.4"></label>
-                <label class="field"><span>Dilution factor</span><input id="uv_df" type="number" min="0" step="0.1" value="1"></label>
-                <label class="field"><span>&epsilon;&lambda;max antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxmab" type="number" min="0" step="any" value="0"></label>
-              </div>
-              <p class="derived-note">Payload extinction coefficients (auto-filled from the library selection):</p>
-              <div class="grid cols3">
-                <label class="field"><span>LP MW <span class="unit">(g/mol)</span></span><input id="uv_mwlp" type="number" min="0" step="any" value="1559.62" readonly></label>
-                <label class="field"><span>&epsilon;280 LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_e280lp" type="number" min="0" step="any" value="7287" readonly></label>
-                <label class="field"><span>&epsilon;&lambda;max LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxlp" type="number" min="0" step="any" value="9624" readonly></label>
-              </div>
             </div>
           </details>
           <div class="pillrow">
@@ -435,6 +436,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         <button onclick="setLcmsMode('reduced')" id="lc_m_reduced">Reduced (LC + HC)</button>
         <button onclick="setLcmsMode('intact')" id="lc_m_intact">Intact / native</button>
       </div>
+      <label class="field" style="margin:8px 0"><input type="checkbox" id="lcms_correct" onchange="renderLcms()" style="width:auto;margin-right:6px"> Correct for ionization response <span class="unit">(intensity &ne; molar abundance)</span></label>
       <div class="split">
         <div id="lcms_inputs"></div>
         <div><div class="results" id="lcms_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('lcms')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_lcms_msg" style="align-self:center"></span></div></div>
@@ -484,25 +486,30 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 
   <div class="card">
     <h2>Predicted DAR distribution</h2>
-    <p class="desc">Model the drug-load distribution from a binomial site-occupancy model: each of <em>n</em> equivalent, independent conjugation sites is occupied with probability <em>p</em>. Set <em>p</em> directly, or derive it from the drug:antibody feed ratio and coupling efficiency.</p>
-    <div class="formula">P(DAR=k) = C(n,k) p&#7503; (1&minus;p)&#8319;&#8315;&#7503;,   mean = np,   variance = np(1&minus;p)</div>
+    <p class="desc">Model the drug-load distribution from a site-occupancy model: each of <em>n</em> equivalent, independent conjugation sites reacts with probability <em>p</em>, and a reacted site carries <em>d</em> drugs. Pick the chemistry &mdash; cysteine/TCEP reduction of interchain disulfides adds <em>d</em>&nbsp;=&nbsp;2 drugs per reacted site (so DAR steps in even numbers), while stochastic amine/lysine coupling adds <em>d</em>&nbsp;=&nbsp;1 (smooth 0,1,2,&hellip; ladder). Set <em>p</em> directly, or derive it from the drug:antibody feed ratio and coupling efficiency.</p>
+    <div class="formula">P(DAR = d&middot;j) = C(n,j) p&#7503; (1&minus;p)&#8319;&#8315;&#7502;,   mean = d&middot;np,   variance = d&sup2;&middot;np(1&minus;p)</div>
     <div class="split">
       <div>
         <div class="grid cols3">
-          <label class="field"><span>Conjugation sites <span class="unit">n</span></span><input id="pd_nsites" type="number" min="1" step="1" value="8" oninput="calcDarDist()"></label>
+          <label class="field"><span>Conjugation chemistry</span><select id="pd_dps" onchange="calcDarDist()">
+            <option value="2">Cysteine / TCEP (d = 2, even DAR)</option>
+            <option value="1">Amine / lysine (d = 1, smooth)</option>
+          </select></label>
+          <label class="field"><span>Conjugation sites <span class="unit">n</span></span><input id="pd_nsites" type="number" min="1" step="1" value="4" oninput="calcDarDist()"></label>
           <label class="field"><span>Occupancy mode</span><select id="pd_mode" onchange="calcDarDist()">
             <option value="feed">From feed ratio &amp; efficiency</option>
             <option value="psite">Direct occupancy p</option>
           </select></label>
-          <label class="field" id="pd_psite_field" style="display:none"><span>Occupancy p <span class="unit">(0&ndash;1)</span></span><input id="pd_psite" type="number" min="0" max="1" step="0.01" value="0.5" oninput="calcDarDist()"></label>
         </div>
+        <label class="field" id="pd_psite_field" style="display:none"><span>Site occupancy p <span class="unit">(0&ndash;1)</span></span><input id="pd_psite" type="number" min="0" max="1" step="0.01" value="0.5" oninput="calcDarDist()"></label>
         <div class="grid" id="pd_feed_fields">
-          <label class="field"><span>Drug : antibody feed ratio</span><input id="pd_feed" type="number" min="0" step="0.1" value="5" oninput="calcDarDist()"></label>
+          <label class="field"><span>Drug : antibody feed ratio</span><input id="pd_feed" type="number" min="0" step="0.1" value="2.5" oninput="calcDarDist()"></label>
           <label class="field"><span>Coupling efficiency <span class="unit">(0&ndash;1)</span></span><input id="pd_eff" type="number" min="0" max="1" step="0.05" value="0.8" oninput="calcDarDist()"></label>
         </div>
         <div class="pillrow">
-          <button onclick="darDistPreset('thiomab')">Thiomab (n=2)</button>
-          <button onclick="darDistPreset('cys8')">Full-reduction Cys (n=8)</button>
+          <button onclick="darDistPreset('thiomab')">Thiomab (Cys, n=2)</button>
+          <button onclick="darDistPreset('cys4')">Interchain Cys (n=4)</button>
+          <button onclick="darDistPreset('lysine')">Lysine (amine, n=8)</button>
         </div>
       </div>
       <div class="sticky-side"><div class="results" id="pd_out"></div></div>
@@ -522,7 +529,15 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="el_a280" type="number" min="0" step="0.0001" value="0.6"></label>
         <label class="field"><span>&epsilon;280 antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e280" type="number" min="0" step="any" value="203000"></label>
         <label class="field"><span>&epsilon;412 TNB <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e412" type="number" min="0" step="any" value="14150"></label>
-      </div></div>
+      </div>
+      <details class="advanced">
+        <summary>Reagent-blank subtraction <span class="unit">(optional)</span></summary>
+        <p class="sub">DTNB/TNB and residual reductant (TCEP/DTT) absorb at 412 and 280&nbsp;nm. Enter a matched reagent blank (all reagents, no protein) to subtract that background before the ratio. Leave 0 to use raw absorbances.</p>
+        <div class="grid">
+          <label class="field"><span>A412 blank <span class="unit">(AU)</span></span><input id="el_a412_blank" type="number" min="0" step="0.0001" value="0"></label>
+          <label class="field"><span>A280 blank <span class="unit">(AU)</span></span><input id="el_a280_blank" type="number" min="0" step="0.0001" value="0"></label>
+        </div>
+      </details></div>
       <div><div class="results" id="el_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('ellman')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_ellman_msg" style="align-self:center"></span></div></div>
     </div>
   </div>
@@ -831,9 +846,13 @@ function scatterCorrectedAbsorbance(a280, aLmax, aRef,
 }
 
 // ── 4. Ellman's free-thiol assay (PDF p.10) ────────────────────────────────
-function ellmanFreeThiols(a412, a280, eps280Mab, eps412 = ELLMAN_E412) {
-  if (a280 === 0) throw new Error("A280 must be non-zero");
-  return (a412 / eps412) / (a280 / eps280Mab);
+function ellmanFreeThiols(a412, a280, eps280Mab, eps412 = ELLMAN_E412, a412Blank = 0.0, a280Blank = 0.0) {
+  // DTNB/TNB and residual reductant absorb at 412 and 280 nm; a matched
+  // reagent blank measures that background. Blanks default to 0 so the call
+  // reduces exactly to the raw ratio when no blank is supplied.
+  const netA280 = a280 - a280Blank;
+  if (netA280 <= 0) throw new Error("net A280 (A280 - blank) must be positive");
+  return ((a412 - a412Blank) / eps412) / (netA280 / eps280Mab);
 }
 
 // ── 5. DAR by analytical HIC (PDF p.14-15) ─────────────────────────────────
@@ -892,11 +911,37 @@ function _weightedMean(intensityByK) {
   return num / total;
 }
 
+function _responseCorrectedMean(intensityByK, responseByK = null) {
+  // Optional ionization-response correction: ESI efficiency changes with
+  // drug load, so molar abundance is recovered as I_k / r_k before the
+  // weighted mean. responseByK=null (or a missing key -> r=1) reproduces the
+  // uncorrected intensity-weighted mean exactly.
+  const molar = {};
+  for (const [k, i] of Object.entries(intensityByK)) {
+    if (responseByK == null) { molar[k] = i; continue; }
+    const r = k in responseByK ? responseByK[k] : 1.0;
+    if (r <= 0) throw new Error("response factor must be positive");
+    molar[k] = i / r;
+  }
+  let total = 0, num = 0;
+  for (const [k, m] of Object.entries(molar)) { total += m; num += Number(k) * m; }
+  if (total === 0) throw new Error("Total corrected abundance must be non-zero");
+  return num / total;
+}
+
 function darLcmsReduced(lightChain, heavyChain) {
   return 2 * _weightedMean(lightChain) + 2 * _weightedMean(heavyChain);
 }
 
 function darLcmsIntact(intensityByK) { return _weightedMean(intensityByK); }
+
+function darLcmsIntactCorrected(intensityByK, responseByK = null) {
+  return _responseCorrectedMean(intensityByK, responseByK);
+}
+
+function darLcmsReducedCorrected(lightChain, heavyChain, lightResponse = null, heavyResponse = null) {
+  return 2 * _responseCorrectedMean(lightChain, lightResponse) + 2 * _responseCorrectedMean(heavyChain, heavyResponse);
+}
 
 function _chainStats(intensityByK) {
   const sumI = _total(intensityByK);
@@ -1285,23 +1330,31 @@ function _binomCoeff(n, k) {
 // n_sites independent sites each occupied with probability p_site, so drug
 // count ~ Binomial(n_sites, p_site). Set p_site directly, or derive it from
 // feed_ratio*efficiency/n_sites. Moments via distributionDispersion.
-function predictDarDistribution(nSites, { pSite = null, feedRatio = null, efficiency = 1.0 } = {}) {
+function predictDarDistribution(nSites, { pSite = null, feedRatio = null, efficiency = 1.0, drugsPerSite = 2 } = {}) {
+  // Site-occupancy DAR model keyed to conjugation chemistry.
+  // drugsPerSite=2 (default): cysteine/TCEP interchain conjugation — each of
+  //   nSites=4 interchain disulfides carries a PAIR of drugs, giving the even
+  //   DAR ladder 0,2,4,6,8 seen for real thiol-linked ADCs.
+  // drugsPerSite=1: stochastic amine/lysine — single drug per site, classic
+  //   smooth binomial over 0,1,2,...
   if (nSites < 1) throw new Error("n_sites must be >= 1");
+  if (drugsPerSite < 1) throw new Error("drugs_per_site must be >= 1");
+  const maxDar = nSites * drugsPerSite;
   let p = pSite;
   if (p === null || p === undefined) {
     if (feedRatio === null || feedRatio === undefined) throw new Error("provide either pSite or feedRatio");
     if (feedRatio < 0 || efficiency < 0) throw new Error("feedRatio and efficiency must be >= 0");
-    p = (feedRatio * efficiency) / nSites;
+    p = (feedRatio * efficiency) / maxDar;
   }
   if (!(p >= 0.0 && p <= 1.0)) {
-    throw new Error("implied per-site probability outside [0,1]; feedRatio*efficiency exceeds n_sites");
+    throw new Error("implied per-site probability outside [0,1]; feedRatio*efficiency exceeds the drug-carrying capacity (n_sites * drugs_per_site)");
   }
   const dist = {};
-  for (let k = 0; k <= nSites; k++) {
-    dist[k] = _binomCoeff(nSites, k) * p ** k * (1.0 - p) ** (nSites - k);
+  for (let j = 0; j <= nSites; j++) {
+    dist[drugsPerSite * j] = _binomCoeff(nSites, j) * p ** j * (1.0 - p) ** (nSites - j);
   }
   const disp = distributionDispersion(dist);
-  return { pSite: p, distribution: dist, meanDar: disp.mean, variance: disp.variance, sd: disp.sd };
+  return { pSite: p, distribution: dist, meanDar: disp.mean, variance: disp.variance, sd: disp.sd, drugsPerSite, maxDar };
 }
 // Reduced LC-MS DAR SD: var = 2var(LC)+2var(HC) (2 light + 2 heavy chains, independent).
 function darLcmsReducedUncertainty(lightChain, heavyChain) {
@@ -1412,6 +1465,8 @@ function selfCheck() {
   results.push(ok(pB.mwAdc, 148765.04893978272, "MW_ADC case B"));
   results.push(ok(pB.concMgml, 5.011743075614535, "conc mg/mL case B"));
   results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0), 11.955241460541815, "Ellman"));
+  results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0, 14150.0, 0.02, 0.01), 11.671557764867941, "Ellman blank-subtracted"));
+  results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0, 14150.0, 0.0, 0.0), 11.955241460541815, "Ellman zero blank == raw"));
   results.push(ok(scatterAbsorbance(0.05, 320.0, 280.0, 4.0), 0.08529779258642231, "scatter@280"));
   const scc = scatterCorrectedAbsorbance(1.0, 0.5, 0.05, 320.0, 495.0, 4.0);
   results.push(ok(scc.a280Corrected, 0.9147022074135777, "scatter-corrected A280"));
@@ -1423,6 +1478,10 @@ function selfCheck() {
   const hicFrac = darSpeciesFractionsCorrected({ 0: 10, 2: 50, 4: 30, 6: 10 }, 203000.0, 5000.0);
   results.push(ok(hicFrac[2], 50.870418158189466, "HIC corrected fraction DAR2"));
   results.push(ok(darLcmsReduced({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }), 5.2, "LC-MS reduced"));
+  results.push(ok(darLcmsIntactCorrected({ 0: 10, 2: 30, 4: 60 }), 3.0, "LC-MS intact uncorrected"));
+  results.push(ok(darLcmsIntactCorrected({ 0: 10, 2: 30, 4: 60 }, { 0: 1.0, 2: 0.8, 4: 0.6 }), 3.2203389830508473, "LC-MS intact response-corrected"));
+  results.push(ok(darLcmsReducedCorrected({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }), 5.2, "LC-MS reduced corrected == raw when no response"));
+  results.push(ok(darLcmsReducedCorrected({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }, { 0: 1.0, 1: 0.9 }, { 0: 1.0, 1: 0.9, 2: 0.8 }), 5.285460807848867, "LC-MS reduced response-corrected"));
   const _bd = darLcmsReducedBreakdown({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
   results.push(ok(_bd.light.contribution, 1.8, "LC-MS breakdown LC 2*mean"));
   results.push(ok(_bd.heavy.contribution, 3.4, "LC-MS breakdown HC 2*mean"));
@@ -1447,12 +1506,16 @@ function selfCheck() {
   ok(uue.sigmaDar,0.13795625467477654,"DAR unc sigma (with eps terms)");
   ok(distributionDispersion({0:5,1:15,2:45,3:25,4:10}).sd,0.9797958971132712,"HIC dispersion sd");
   const pd = predictDarDistribution(4, { feedRatio: 2.5, efficiency: 0.8 });
-  results.push(ok(pd.pSite, 0.5, "DAR dist p_site"));
-  results.push(ok(pd.meanDar, 2.0, "DAR dist mean"));
-  results.push(ok(pd.sd, 1.0, "DAR dist sd"));
-  results.push(ok(pd.distribution[2], 0.375, "DAR dist P(k=2)"));
+  results.push(ok(pd.pSite, 0.25, "DAR dist p_site (cys)"));
+  results.push(ok(pd.meanDar, 2.0, "DAR dist mean (cys)"));
+  results.push(ok(pd.sd, 1.7320508075688772, "DAR dist sd (cys)"));
+  results.push(ok(pd.distribution[2], 0.421875, "DAR dist P(DAR=2) (cys)"));
+  results.push(ok(pd.distribution[1] === undefined ? 1 : 0, 1, "DAR dist has no odd species (cys)"));
   const pd2 = predictDarDistribution(4, { pSite: 0.5 });
-  results.push(ok(pd2.meanDar, 2.0, "DAR dist via p_site"));
+  results.push(ok(pd2.meanDar, 4.0, "DAR dist via p_site (cys)"));
+  const pdLys = predictDarDistribution(8, { pSite: 0.5, drugsPerSite: 1 });
+  results.push(ok(pdLys.meanDar, 4.0, "DAR dist lysine mean"));
+  results.push(ok(pdLys.distribution[3], 0.21875, "DAR dist lysine P(DAR=3)"));
   ok(darLcmsReducedUncertainty({0:10,1:90},{0:5,1:20,2:75}).sigmaDar,0.8944271909999159,"LC-MS reduced sigma");
   results.push("PASS uncertainty (UV / HIC / LC-MS)");
   const dp = planSerialDilution({ stockUM: 1000, topUM: 10, fold: 4, nPoints: 4,
@@ -1505,6 +1568,7 @@ const ADC = {
   scatterAbsorbance, scatterCorrectedAbsorbance,
   ellmanFreeThiols, darHIC, darSpeciesFractions,
   darHICCorrected, darSpeciesFractionsCorrected, darLcmsReduced, darLcmsIntact,
+  darLcmsIntactCorrected, darLcmsReducedCorrected,
   darLcmsReducedBreakdown,
   molesFromMass, reagentVolumeUL, planConjugation, yieldAndFormulation,
   planSerialDilution, plateWellVolume, PLATE_WELL_VOLUME_UL,
@@ -2012,11 +2076,14 @@ function bindConj() {
 // ================= Ellman =================
 function calcEllman() {
   try {
-    const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"));
+    const b412 = num("el_a412_blank") || 0, b280 = num("el_a280_blank") || 0;
+    const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"), b412, b280);
     const tNeg = Number.isFinite(t) && t < 0;
+    const blanked = b412 > 0 || b280 > 0;
     $("el_out").innerHTML = "<h3>Results</h3>"
       + `<div class="rrow primary"><span class="k">Free thiols per antibody</span><span class="v${tNeg ? " neg" : ""}">${fmt(t, 3)}</span></div>`
       + rrow("Interpretation", tNeg ? "&mdash;" : t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction")
+      + (blanked ? rrow("Blank-subtracted", "A412 &minus;" + fmt(b412, 4) + ", A280 &minus;" + fmt(b280, 4)) : "")
       + (tNeg ? resNote("Negative thiol count &mdash; check that A412 and A280 aren't swapped or baseline-subtracted below zero.") : "");
   } catch (e) { $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
@@ -2063,17 +2130,20 @@ function calcDarDist() {
   $("pd_psite_field").style.display = mode === "psite" ? "" : "none";
   $("pd_feed_fields").style.display = mode === "feed" ? "" : "none";
   const n = parseInt($("pd_nsites").value) || 0;
+  const d = parseInt($("pd_dps").value) || 2;
   const out = $("pd_out");
   try {
     let res;
     if (mode === "psite") {
-      res = ADC.predictDarDistribution(n, { pSite: num("pd_psite") });
+      res = ADC.predictDarDistribution(n, { pSite: num("pd_psite"), drugsPerSite: d });
     } else {
-      res = ADC.predictDarDistribution(n, { feedRatio: num("pd_feed"), efficiency: num("pd_eff") });
+      res = ADC.predictDarDistribution(n, { feedRatio: num("pd_feed"), efficiency: num("pd_eff"), drugsPerSite: d });
     }
     let html = "<h3>Results</h3>"
       + rrow("Mean DAR", fmt(res.meanDar, 3), "primary")
       + rrow("Site occupancy p", fmt(res.pSite, 4))
+      + rrow("Drugs per reacted site", String(res.drugsPerSite))
+      + rrow("Max possible DAR", String(res.maxDar))
       + rrow("Distribution SD", "&plusmn; " + fmt(res.sd, 3) + " drugs")
       + rrow("Variance", fmt(res.variance, 4))
       + "<h3 style='margin-top:14px'>Load distribution</h3>";
@@ -2085,16 +2155,17 @@ function calcDarDist() {
   } catch (e) { out.innerHTML = placeholder(e.message || "Enter valid n and occupancy"); }
 }
 function darDistPreset(kind) {
-  if (kind === "thiomab") { $("pd_nsites").value = 2; $("pd_mode").value = "feed"; $("pd_feed").value = 2.2; $("pd_eff").value = 0.95; }
-  else { $("pd_nsites").value = 8; $("pd_mode").value = "feed"; $("pd_feed").value = 8; $("pd_eff").value = 0.9; }
+  if (kind === "thiomab") { $("pd_dps").value = "2"; $("pd_nsites").value = 2; $("pd_mode").value = "feed"; $("pd_feed").value = 2.2; $("pd_eff").value = 0.95; }
+  else if (kind === "lysine") { $("pd_dps").value = "1"; $("pd_nsites").value = 8; $("pd_mode").value = "feed"; $("pd_feed").value = 4; $("pd_eff").value = 0.9; }
+  else { $("pd_dps").value = "2"; $("pd_nsites").value = 4; $("pd_mode").value = "feed"; $("pd_feed").value = 6.4; $("pd_eff").value = 0.9; }
   calcDarDist();
 }
 
 // ================= LC-MS =================
 let lcmsMode = "reduced";
-let lcLC = [{ k: 0, i: 10 }, { k: 1, i: 90 }];
-let lcHC = [{ k: 0, i: 5 }, { k: 1, i: 20 }, { k: 2, i: 75 }];
-let lcIntact = [{ k: 0, i: 10 }, { k: 2, i: 30 }, { k: 4, i: 60 }];
+let lcLC = [{ k: 0, i: 10, r: 1 }, { k: 1, i: 90, r: 1 }];
+let lcHC = [{ k: 0, i: 5, r: 1 }, { k: 1, i: 20, r: 1 }, { k: 2, i: 75, r: 1 }];
+let lcIntact = [{ k: 0, i: 10, r: 1 }, { k: 2, i: 30, r: 1 }, { k: 4, i: 60, r: 1 }];
 function setLcmsMode(m) {
   lcmsMode = m;
   $("lc_m_reduced").style.background = m === "reduced" ? "var(--accent-soft)" : "#fff";
@@ -2107,13 +2178,18 @@ function setLcmsMode(m) {
   renderLcms();
 }
 function chainBlock(title, arr, name) {
-  return `<p class="sub" style="font-weight:600;margin-top:4px">${title}</p>` + arr.map((s, i) => `
-    <div class="speciesrow">
+  const corr = $("lcms_correct") && $("lcms_correct").checked;
+  const rInput = (i) => corr
+    ? `<input type="number" min="0" step="any" value="${arr[i].r == null ? 1 : arr[i].r}" oninput="${name}[${i}].r=parseFloat(this.value)||0;calcLcms()" title="relative MS response (signal per mole, ref = 1)">`
+    : "";
+  return `<p class="sub" style="font-weight:600;margin-top:4px">${title}${corr ? ' <span class="unit">drugs / intensity / response</span>' : ' <span class="unit">drugs / intensity</span>'}</p>` + arr.map((s, i) => `
+    <div class="speciesrow${corr ? " corr" : ""}">
       <input type="number" min="0" step="any" value="${s.k}" onchange="${name}[${i}].k=parseInt(this.value)||0;calcLcms()" title="drugs">
       <input type="number" min="0" step="any" value="${s.i}" oninput="${name}[${i}].i=parseFloat(this.value)||0;calcLcms()" title="intensity">
+      ${rInput(i)}
       <button onclick="${name}.splice(${i},1);renderLcms();calcLcms()">&times;</button>
     </div>`).join("")
-    + `<div class="btnrow"><button class="ghost" onclick="${name}.push({k:${name}.length,i:0});renderLcms();calcLcms()">+ ${title} species</button></div>`;
+    + `<div class="btnrow"><button class="ghost" onclick="${name}.push({k:${name}.length,i:0,r:1});renderLcms();calcLcms()">+ ${title} species</button></div>`;
 }
 function renderLcms() {
   $("lcms_inputs").innerHTML = lcmsMode === "reduced"
@@ -2122,31 +2198,39 @@ function renderLcms() {
   calcLcms();
 }
 function toMap(arr) { const m = {}; arr.forEach((s) => { m[s.k] = (m[s.k] || 0) + s.i; }); return m; }
+function toResponse(arr) { const m = {}; arr.forEach((s) => { m[s.k] = (s.r == null ? 1 : s.r); }); return m; }
 function calcLcms() {
   try {
+    const corr = $("lcms_correct") && $("lcms_correct").checked;
     let html;
     if (lcmsMode === "reduced") {
       const bd = ADC.darLcmsReducedBreakdown(toMap(lcLC), toMap(lcHC));
       const u = ADC.darLcmsReducedUncertainty(toMap(lcLC), toMap(lcHC));
+      const darC = corr ? ADC.darLcmsReducedCorrected(toMap(lcLC), toMap(lcHC), toResponse(lcLC), toResponse(lcHC)) : bd.dar;
       const chainRows = (label, s, sd) =>
           rrow(label + " &Sigma;I (total intensity)", fmt(s.sum_i, 1))
         + rrow(label + " &Sigma;k&middot;I (weighted)", fmt(s.sum_ki, 1))
         + rrow(label + " mean (drugs/chain)", fmt(s.mean, 4))
         + rrow(label + " load SD (per chain)", "&plusmn; " + fmt(sd, 4))
         + rrow(label + " contribution (2&times;mean)", fmt(s.contribution, 4));
-      html = rrow("DAR", fmt(bd.dar, 3) + " &plusmn; " + fmt(u.sigmaDar, 3), "primary")
+      html = rrow("DAR", fmt(corr ? darC : bd.dar, 3) + " &plusmn; " + fmt(u.sigmaDar, 3), "primary")
+        + (corr ? rrow("Uncorrected DAR", fmt(bd.dar, 3)) : "")
         + rrow("DAR 95% CI", fmt(u.ci95Low, 3) + " &ndash; " + fmt(u.ci95High, 3))
-        + rrow("Mode", "denaturing + reducing")
+        + rrow("Mode", "denaturing + reducing" + (corr ? ", response-corrected" : ""))
         + "<div class=\"rrow\" style=\"border:0;padding-top:6px\"><span class=\"k\" style=\"font-weight:600\">Per-chain breakdown</span><span class=\"v\"></span></div>"
         + chainRows("Light chain", bd.light, u.lightSd)
         + chainRows("Heavy chain", bd.heavy, u.heavySd)
         + rrow("DAR = 2&middot;mean&#8202;LC + 2&middot;mean&#8202;HC",
                fmt(bd.light.contribution, 4) + " + " + fmt(bd.heavy.contribution, 4)
-               + " = " + fmt(bd.dar, 4));
+               + " = " + fmt(bd.dar, 4))
+        + (corr ? resNote("Response-corrected DAR divides each species intensity by its relative MS response before averaging. Uncertainty/CI shown are from the uncorrected per-chain spread.") : "");
     } else {
       const dar = ADC.darLcmsIntact(toMap(lcIntact));
-      html = rrow("DAR", fmt(dar, 3), "primary")
-        + rrow("Mode", "non-reducing / native");
+      const darC = corr ? ADC.darLcmsIntactCorrected(toMap(lcIntact), toResponse(lcIntact)) : dar;
+      html = rrow("DAR", fmt(darC, 3), "primary")
+        + (corr ? rrow("Uncorrected DAR", fmt(dar, 3)) : "")
+        + rrow("Mode", "non-reducing / native" + (corr ? ", response-corrected" : ""))
+        + (corr ? resNote("Response-corrected DAR divides each species intensity by its relative MS response (signal per mole, reference species = 1) before averaging.") : "");
     }
     $("lcms_out").innerHTML = "<h3>Results</h3>" + html;
   } catch (e) { $("lcms_out").innerHTML = placeholder("Enter peak intensities for each chain"); }
@@ -3205,7 +3289,7 @@ function capturePanel(panel) {
       autonote: `${plan.nMabNmol.toFixed(2)} nmol mAb, rxn ${plan.reactionVolumeUL.toFixed(1)} uL` };
   }
   if (panel === "ellman") {
-    const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"));
+    const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"), num("el_a412_blank") || 0, num("el_a280_blank") || 0);
     return { assay: "ellman", free_thiols: t };
   }
   if (panel === "hic") {
