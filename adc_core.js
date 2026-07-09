@@ -68,9 +68,13 @@ export function scatterCorrectedAbsorbance(a280, aLmax, aRef,
 }
 
 // ── 4. Ellman's free-thiol assay (PDF p.10) ────────────────────────────────
-export function ellmanFreeThiols(a412, a280, eps280Mab, eps412 = ELLMAN_E412) {
-  if (a280 === 0) throw new Error("A280 must be non-zero");
-  return (a412 / eps412) / (a280 / eps280Mab);
+export function ellmanFreeThiols(a412, a280, eps280Mab, eps412 = ELLMAN_E412, a412Blank = 0.0, a280Blank = 0.0) {
+  // DTNB/TNB and residual reductant absorb at 412 and 280 nm; a matched
+  // reagent blank measures that background. Blanks default to 0 so the call
+  // reduces exactly to the raw ratio when no blank is supplied.
+  const netA280 = a280 - a280Blank;
+  if (netA280 <= 0) throw new Error("net A280 (A280 - blank) must be positive");
+  return ((a412 - a412Blank) / eps412) / (netA280 / eps280Mab);
 }
 
 // ── 5. DAR by analytical HIC (PDF p.14-15) ─────────────────────────────────
@@ -129,11 +133,37 @@ function _weightedMean(intensityByK) {
   return num / total;
 }
 
+function _responseCorrectedMean(intensityByK, responseByK = null) {
+  // Optional ionization-response correction: ESI efficiency changes with
+  // drug load, so molar abundance is recovered as I_k / r_k before the
+  // weighted mean. responseByK=null (or a missing key -> r=1) reproduces the
+  // uncorrected intensity-weighted mean exactly.
+  const molar = {};
+  for (const [k, i] of Object.entries(intensityByK)) {
+    if (responseByK == null) { molar[k] = i; continue; }
+    const r = k in responseByK ? responseByK[k] : 1.0;
+    if (r <= 0) throw new Error("response factor must be positive");
+    molar[k] = i / r;
+  }
+  let total = 0, num = 0;
+  for (const [k, m] of Object.entries(molar)) { total += m; num += Number(k) * m; }
+  if (total === 0) throw new Error("Total corrected abundance must be non-zero");
+  return num / total;
+}
+
 export function darLcmsReduced(lightChain, heavyChain) {
   return 2 * _weightedMean(lightChain) + 2 * _weightedMean(heavyChain);
 }
 
 export function darLcmsIntact(intensityByK) { return _weightedMean(intensityByK); }
+
+export function darLcmsIntactCorrected(intensityByK, responseByK = null) {
+  return _responseCorrectedMean(intensityByK, responseByK);
+}
+
+export function darLcmsReducedCorrected(lightChain, heavyChain, lightResponse = null, heavyResponse = null) {
+  return 2 * _responseCorrectedMean(lightChain, lightResponse) + 2 * _responseCorrectedMean(heavyChain, heavyResponse);
+}
 
 // Per-chain intermediates for the reduced LC-MS DAR (sumI, sumKI, mean, 2*mean).
 function _chainStats(intensityByK) {
@@ -548,23 +578,31 @@ function _binomCoeff(n, k) {
 // n_sites independent sites each occupied with probability p_site, so drug
 // count ~ Binomial(n_sites, p_site). Set p_site directly, or derive it from
 // feed_ratio*efficiency/n_sites. Moments via distributionDispersion.
-export function predictDarDistribution(nSites, { pSite = null, feedRatio = null, efficiency = 1.0 } = {}) {
+export function predictDarDistribution(nSites, { pSite = null, feedRatio = null, efficiency = 1.0, drugsPerSite = 2 } = {}) {
+  // Site-occupancy DAR model keyed to conjugation chemistry.
+  // drugsPerSite=2 (default): cysteine/TCEP interchain conjugation — each of
+  //   nSites=4 interchain disulfides carries a PAIR of drugs, giving the even
+  //   DAR ladder 0,2,4,6,8 seen for real thiol-linked ADCs.
+  // drugsPerSite=1: stochastic amine/lysine — single drug per site, classic
+  //   smooth binomial over 0,1,2,...
   if (nSites < 1) throw new Error("n_sites must be >= 1");
+  if (drugsPerSite < 1) throw new Error("drugs_per_site must be >= 1");
+  const maxDar = nSites * drugsPerSite;
   let p = pSite;
   if (p === null || p === undefined) {
     if (feedRatio === null || feedRatio === undefined) throw new Error("provide either pSite or feedRatio");
     if (feedRatio < 0 || efficiency < 0) throw new Error("feedRatio and efficiency must be >= 0");
-    p = (feedRatio * efficiency) / nSites;
+    p = (feedRatio * efficiency) / maxDar;
   }
   if (!(p >= 0.0 && p <= 1.0)) {
-    throw new Error("implied per-site probability outside [0,1]; feedRatio*efficiency exceeds n_sites");
+    throw new Error("implied per-site probability outside [0,1]; feedRatio*efficiency exceeds the drug-carrying capacity (n_sites * drugs_per_site)");
   }
   const dist = {};
-  for (let k = 0; k <= nSites; k++) {
-    dist[k] = _binomCoeff(nSites, k) * p ** k * (1.0 - p) ** (nSites - k);
+  for (let j = 0; j <= nSites; j++) {
+    dist[drugsPerSite * j] = _binomCoeff(nSites, j) * p ** j * (1.0 - p) ** (nSites - j);
   }
   const disp = distributionDispersion(dist);
-  return { pSite: p, distribution: dist, meanDar: disp.mean, variance: disp.variance, sd: disp.sd };
+  return { pSite: p, distribution: dist, meanDar: disp.mean, variance: disp.variance, sd: disp.sd, drugsPerSite, maxDar };
 }
 
 // Reduced LC-MS DAR SD from per-chain load heterogeneity. DAR = 2mean(LC)+2mean(HC);
@@ -708,6 +746,8 @@ export function selfCheck() {
   results.push(ok(pB.mwAdc, 148765.04893978272, "MW_ADC case B"));
   results.push(ok(pB.concMgml, 5.011743075614535, "conc mg/mL case B"));
   results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0), 11.955241460541815, "Ellman"));
+  results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0, 14150.0, 0.02, 0.01), 11.671557764867941, "Ellman blank-subtracted"));
+  results.push(ok(ellmanFreeThiols(0.5, 0.6, 203000.0, 14150.0, 0.0, 0.0), 11.955241460541815, "Ellman zero blank == raw"));
   results.push(ok(scatterAbsorbance(0.05, 320.0, 280.0, 4.0), 0.08529779258642231, "scatter@280"));
   const scc = scatterCorrectedAbsorbance(1.0, 0.5, 0.05, 320.0, 495.0, 4.0);
   results.push(ok(scc.a280Corrected, 0.9147022074135777, "scatter-corrected A280"));
@@ -719,6 +759,10 @@ export function selfCheck() {
   const hicFrac = darSpeciesFractionsCorrected({ 0: 10, 2: 50, 4: 30, 6: 10 }, 203000.0, 5000.0);
   results.push(ok(hicFrac[2], 50.870418158189466, "HIC corrected fraction DAR2"));
   results.push(ok(darLcmsReduced({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }), 5.2, "LC-MS reduced"));
+  results.push(ok(darLcmsIntactCorrected({ 0: 10, 2: 30, 4: 60 }), 3.0, "LC-MS intact uncorrected"));
+  results.push(ok(darLcmsIntactCorrected({ 0: 10, 2: 30, 4: 60 }, { 0: 1.0, 2: 0.8, 4: 0.6 }), 3.2203389830508473, "LC-MS intact response-corrected"));
+  results.push(ok(darLcmsReducedCorrected({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }), 5.2, "LC-MS reduced corrected == raw when no response"));
+  results.push(ok(darLcmsReducedCorrected({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 }, { 0: 1.0, 1: 0.9 }, { 0: 1.0, 1: 0.9, 2: 0.8 }), 5.285460807848867, "LC-MS reduced response-corrected"));
   const bd = darLcmsReducedBreakdown({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
   results.push(ok(bd.light.contribution, 1.8, "LC-MS breakdown LC 2*mean"));
   results.push(ok(bd.heavy.contribution, 3.4, "LC-MS breakdown HC 2*mean"));
@@ -755,12 +799,16 @@ export function selfCheck() {
   const dd = distributionDispersion({ 0: 5, 1: 15, 2: 45, 3: 25, 4: 10 });
   ok(dd.sd, 0.9797958971132712, "HIC dispersion sd");
   const pd = predictDarDistribution(4, { feedRatio: 2.5, efficiency: 0.8 });
-  results.push(ok(pd.pSite, 0.5, "DAR dist p_site"));
-  results.push(ok(pd.meanDar, 2.0, "DAR dist mean"));
-  results.push(ok(pd.sd, 1.0, "DAR dist sd"));
-  results.push(ok(pd.distribution[2], 0.375, "DAR dist P(k=2)"));
+  results.push(ok(pd.pSite, 0.25, "DAR dist p_site (cys)"));
+  results.push(ok(pd.meanDar, 2.0, "DAR dist mean (cys)"));
+  results.push(ok(pd.sd, 1.7320508075688772, "DAR dist sd (cys)"));
+  results.push(ok(pd.distribution[2], 0.421875, "DAR dist P(DAR=2) (cys)"));
+  results.push(ok(pd.distribution[1] === undefined ? 1 : 0, 1, "DAR dist has no odd species (cys)"));
   const pd2 = predictDarDistribution(4, { pSite: 0.5 });
-  results.push(ok(pd2.meanDar, 2.0, "DAR dist via p_site"));
+  results.push(ok(pd2.meanDar, 4.0, "DAR dist via p_site (cys)"));
+  const pdLys = predictDarDistribution(8, { pSite: 0.5, drugsPerSite: 1 });
+  results.push(ok(pdLys.meanDar, 4.0, "DAR dist lysine mean"));
+  results.push(ok(pdLys.distribution[3], 0.21875, "DAR dist lysine P(DAR=3)"));
   const lu = darLcmsReducedUncertainty({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
   ok(lu.sigmaDar, 0.8944271909999159, "LC-MS reduced sigma");
   results.push("PASS uncertainty (UV / HIC / LC-MS)");
