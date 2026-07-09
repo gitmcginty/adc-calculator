@@ -81,6 +81,25 @@ def test_ellman():
     assert core.ellman_free_thiols(0.5, 0.6, 203000.0) == approx(11.955241460541815)
 
 
+def test_ellman_blank_subtraction_lowers_ratio():
+    raw = core.ellman_free_thiols(0.5, 0.6, 203000.0)
+    corrected = core.ellman_free_thiols(0.5, 0.6, 203000.0, 14150.0, 0.02, 0.01)
+    assert corrected == approx(11.671557764867941)
+    # blank background biases both channels; net effect lowers the ratio here
+    assert corrected < raw
+
+
+def test_ellman_zero_blank_reduces_to_raw():
+    assert core.ellman_free_thiols(0.5, 0.6, 203000.0, 14150.0, 0.0, 0.0) == approx(
+        core.ellman_free_thiols(0.5, 0.6, 203000.0)
+    )
+
+
+def test_ellman_rejects_nonpositive_net_a280():
+    with pytest.raises(ValueError):
+        core.ellman_free_thiols(0.5, 0.6, 203000.0, 14150.0, 0.0, 0.6)
+
+
 # ---- Scattering / turbidity correction --------------------------------------
 def test_scatter_absorbance_rayleigh():
     assert core.scatter_absorbance(0.05, 320.0, 280.0, 4.0) == approx(0.08529779258642231)
@@ -166,6 +185,37 @@ def test_dar_lcms_reduced():
 def test_dar_lcms_intact():
     # non-reducing/native intensity-weighted mean
     assert core.dar_lcms_intact({0: 10, 2: 30, 4: 60}) == approx((0*10+2*30+4*60)/100)
+
+
+def test_dar_lcms_intact_corrected_reduces_to_raw():
+    intensity = {0: 10, 2: 30, 4: 60}
+    assert core.dar_lcms_intact_corrected(intensity) == approx(core.dar_lcms_intact(intensity))
+    assert core.dar_lcms_intact_corrected(intensity, None) == approx(3.0)
+
+
+def test_dar_lcms_intact_corrected_raises_dar_when_high_load_underionizes():
+    intensity = {0: 10, 2: 30, 4: 60}
+    response = {0: 1.0, 2: 0.8, 4: 0.6}  # higher drug load ionizes worse
+    corrected = core.dar_lcms_intact_corrected(intensity, response)
+    assert corrected == approx(3.2203389830508473)
+    # under-counted high-load species are up-weighted -> DAR rises
+    assert corrected > core.dar_lcms_intact(intensity)
+
+
+def test_dar_lcms_reduced_corrected_reduces_to_raw():
+    lc, hc = {0: 10, 1: 90}, {0: 5, 1: 20, 2: 75}
+    assert core.dar_lcms_reduced_corrected(lc, hc) == approx(core.dar_lcms_reduced(lc, hc))
+
+
+def test_dar_lcms_reduced_corrected_with_response():
+    lc, hc = {0: 10, 1: 90}, {0: 5, 1: 20, 2: 75}
+    lc_r, hc_r = {0: 1.0, 1: 0.9}, {0: 1.0, 1: 0.9, 2: 0.8}
+    assert core.dar_lcms_reduced_corrected(lc, hc, lc_r, hc_r) == approx(5.285460807848867)
+
+
+def test_dar_lcms_response_rejects_nonpositive_factor():
+    with pytest.raises(ValueError):
+        core.dar_lcms_intact_corrected({0: 10, 2: 30}, {0: 1.0, 2: 0.0})
 
 
 def test_dar_lcms_reduced_breakdown():
@@ -619,31 +669,53 @@ def test_distribution_dispersion_rejects_empty():
 
 
 # ---- DAR distribution predictor (binomial site-occupancy) -------------------
-def test_predict_dar_distribution_from_feed_ratio():
+def test_predict_dar_distribution_cysteine_even_ladder():
+    # Cysteine/TCEP: 4 interchain disulfides, each carries 2 drugs when reduced.
+    # feed 2.5 x eff 0.8 = 2.0 drugs offered -> p_site = 2.0 / (4*2) = 0.25.
     r = core.predict_dar_distribution(4, feed_ratio=2.5, efficiency=0.8)
-    assert r["p_site"] == approx(0.5)
-    assert r["mean_dar"] == approx(2.0)
-    assert r["variance"] == approx(1.0)
-    assert r["sd"] == approx(1.0)
+    assert r["p_site"] == approx(0.25)
+    assert r["drugs_per_site"] == 2
+    assert r["max_dar"] == 8
+    assert r["mean_dar"] == approx(2.0)          # mean = feed*eff
+    assert r["variance"] == approx(3.0)          # d^2 * n * p * (1-p) = 4*4*.25*.75
+    assert r["sd"] == approx(3.0 ** 0.5)
     assert sum(r["distribution"].values()) == approx(1.0)
+    # DAR ladder is even only — no odd species exist
+    assert set(r["distribution"].keys()) == {0, 2, 4, 6, 8}
+    assert 1 not in r["distribution"]
+    assert 3 not in r["distribution"]
+    assert r["distribution"][2] == approx(0.421875)
+    assert r["distribution"][0] == approx(0.31640625)
+
+
+def test_predict_dar_distribution_cysteine_full_ladder():
+    # n=4, p_site=0.5 directly -> canonical DAR-4 ladder with even support.
+    r = core.predict_dar_distribution(4, p_site=0.5)
+    assert r["mean_dar"] == approx(4.0)          # d*n*p = 2*4*0.5
+    assert r["variance"] == approx(4.0)          # d^2*n*p*(1-p) = 4*4*.25
+    assert set(r["distribution"].keys()) == {0, 2, 4, 6, 8}
+    assert r["distribution"][4] == approx(0.375)
     assert r["distribution"][0] == approx(0.0625)
-    assert r["distribution"][2] == approx(0.375)
-    assert r["distribution"][4] == approx(0.0625)
+    assert r["distribution"][8] == approx(0.0625)
 
 
-def test_predict_dar_distribution_from_p_site_matches_np():
-    r = core.predict_dar_distribution(8, p_site=0.5)
-    # Binomial mean = n*p, variance = n*p*(1-p)
-    assert r["mean_dar"] == approx(4.0)
-    assert r["variance"] == approx(2.0)
+def test_predict_dar_distribution_lysine_binomial():
+    # Stochastic amine: single drug per site, smooth binomial over 0..n.
+    r = core.predict_dar_distribution(8, p_site=0.5, drugs_per_site=1)
+    assert r["drugs_per_site"] == 1
+    assert r["mean_dar"] == approx(4.0)          # n*p
+    assert r["variance"] == approx(2.0)          # n*p*(1-p)
+    assert set(r["distribution"].keys()) == set(range(9))  # 0..8, all integers
+    assert r["distribution"][3] == approx(0.21875)
 
 
 def test_predict_dar_distribution_efficiency_scales_p():
-    full = core.predict_dar_distribution(4, feed_ratio=2.0, efficiency=1.0)
-    half = core.predict_dar_distribution(4, feed_ratio=2.0, efficiency=0.5)
-    assert full["p_site"] == approx(0.5)
+    full = core.predict_dar_distribution(4, feed_ratio=4.0, efficiency=1.0)
+    half = core.predict_dar_distribution(4, feed_ratio=4.0, efficiency=0.5)
+    assert full["p_site"] == approx(0.5)         # 4 / (4*2)
     assert half["p_site"] == approx(0.25)
-    assert half["mean_dar"] == approx(1.0)
+    assert full["mean_dar"] == approx(4.0)
+    assert half["mean_dar"] == approx(2.0)
 
 
 def test_predict_dar_distribution_rejects_bad_input():
@@ -652,7 +724,9 @@ def test_predict_dar_distribution_rejects_bad_input():
     with pytest.raises(ValueError):
         core.predict_dar_distribution(4)                      # no p or feed
     with pytest.raises(ValueError):
-        core.predict_dar_distribution(4, feed_ratio=5.0)      # p_site > 1
+        core.predict_dar_distribution(4, feed_ratio=9.0)      # p_site > 1 (>capacity 8)
+    with pytest.raises(ValueError):
+        core.predict_dar_distribution(4, p_site=0.5, drugs_per_site=0)  # bad d
 
 
 if __name__ == "__main__":
