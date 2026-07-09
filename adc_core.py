@@ -174,11 +174,22 @@ def ellman_free_thiols(
     a280: float,
     eps280_mab: float,
     eps412: float = ELLMAN_E412,
+    a412_blank: float = 0.0,
+    a280_blank: float = 0.0,
 ) -> float:
-    """Free sulfhydryl-to-protein ratio = (A412/eps412) / (A280/eps280_mab)."""
-    if a280 == 0:
-        raise ValueError("A280 must be non-zero")
-    return (a412 / eps412) / (a280 / eps280_mab)
+    """Free sulfhydryl-to-protein ratio = (A412/eps412) / (A280/eps280_mab).
+
+    DTNB and its TNB(2-) product, plus any residual reductant (TCEP/DTT),
+    absorb at both 412 and 280 nm.  A matched reagent blank (all reagents,
+    no protein) measures that background; subtracting it before the ratio
+    removes the bias.  ``a412_blank`` and ``a280_blank`` default to 0.0, so
+    the call reduces exactly to the raw ratio when no blank is supplied.
+    The net (blank-subtracted) A280 must be positive.
+    """
+    net_a280 = a280 - a280_blank
+    if net_a280 <= 0:
+        raise ValueError("net A280 (A280 - blank) must be positive")
+    return ((a412 - a412_blank) / eps412) / (net_a280 / eps280_mab)
 
 
 # ==========================================================================
@@ -268,6 +279,38 @@ def _weighted_mean(intensity_by_k: Mapping[int, float]) -> float:
     return sum(k * i for k, i in intensity_by_k.items()) / total
 
 
+def _response_corrected_mean(
+    intensity_by_k: Mapping[int, float],
+    response_by_k: Mapping[int, float] | None = None,
+) -> float:
+    """Intensity-weighted mean drug load with an optional ionization-response
+    correction.
+
+    Raw LC-MS DAR assumes MS peak intensity is proportional to molar
+    abundance.  In electrospray this fails: adding a hydrophobic payload
+    changes a species' ionization efficiency, so highly loaded species are
+    typically under-counted.  ``response_by_k`` gives the relative response
+    factor r_k of each drug-load species (r_k = signal per mole, normalised
+    to any convenient reference, e.g. r_0 = 1).  Molar abundance is recovered
+    as I_k / r_k before the weighted mean.  With ``response_by_k=None`` (or a
+    missing key, which defaults to r_k = 1) the result is identical to the
+    uncorrected intensity-weighted mean.
+    """
+    if response_by_k is None:
+        molar = dict(intensity_by_k)
+    else:
+        molar = {}
+        for k, i in intensity_by_k.items():
+            r = response_by_k.get(k, 1.0)
+            if r <= 0:
+                raise ValueError("response factor must be positive")
+            molar[k] = i / r
+    total = sum(molar.values())
+    if total == 0:
+        raise ValueError("Total corrected abundance must be non-zero")
+    return sum(k * m for k, m in molar.items()) / total
+
+
 def dar_lcms_reduced(
     light_chain: Mapping[int, float],
     heavy_chain: Mapping[int, float],
@@ -279,6 +322,35 @@ def dar_lcms_reduced(
 def dar_lcms_intact(intensity_by_k: Mapping[int, float]) -> float:
     """Denaturing non-reducing / native DAR = intensity-weighted mean (PDF p.17-18)."""
     return _weighted_mean(intensity_by_k)
+
+
+def dar_lcms_intact_corrected(
+    intensity_by_k: Mapping[int, float],
+    response_by_k: Mapping[int, float] | None = None,
+) -> float:
+    """Intact LC-MS DAR with an ionization-response correction (A2).
+
+    See ``_response_corrected_mean``.  Reduces exactly to
+    ``dar_lcms_intact`` when no response factors are supplied.
+    """
+    return _response_corrected_mean(intensity_by_k, response_by_k)
+
+
+def dar_lcms_reduced_corrected(
+    light_chain: Mapping[int, float],
+    heavy_chain: Mapping[int, float],
+    light_response: Mapping[int, float] | None = None,
+    heavy_response: Mapping[int, float] | None = None,
+) -> float:
+    """Reduced LC-MS DAR with per-chain ionization-response correction (A2).
+
+    = 2*corrected_mean(LC) + 2*corrected_mean(HC).  Reduces exactly to
+    ``dar_lcms_reduced`` when no response factors are supplied.
+    """
+    return (
+        2 * _response_corrected_mean(light_chain, light_response)
+        + 2 * _response_corrected_mean(heavy_chain, heavy_response)
+    )
 
 
 def _chain_stats(intensity_by_k: Mapping[int, float]) -> dict:
@@ -1070,45 +1142,67 @@ def predict_dar_distribution(
     p_site: float | None = None,
     feed_ratio: float | None = None,
     efficiency: float = 1.0,
+    drugs_per_site: int = 2,
 ) -> dict:
-    """Predict the full DAR distribution from a binomial site-occupancy model.
+    """Predict the full DAR distribution from a site-occupancy model, keyed to
+    the conjugation chemistry.
 
-    Conjugation to ``n_sites`` equivalent, independent sites (e.g. the 8
-    interchain cysteines exposed by full reduction of an IgG1) is modelled as
-    ``n_sites`` Bernoulli trials each occupied with probability ``p_site``.
-    The number of drugs per antibody is then Binomial(n_sites, p_site):
+    Real conjugation chemistries do not populate every integer DAR equally.
+    The controlling variable is how many drugs each independent *site* carries
+    once it reacts (``drugs_per_site``):
 
-        P(DAR=k) = C(n, k) p^k (1-p)^(n-k),  k = 0..n
-        mean DAR = n*p,   variance = n*p*(1-p)
+    * **Cysteine / TCEP interchain conjugation (drugs_per_site=2, default).**
+      An IgG1 has four interchain disulfides; reducing each one exposes a
+      *pair* of thiols that are conjugated together. A site is therefore
+      either unreacted or contributes **two** drugs, so the achievable DAR
+      ladder is 0, 2, 4, 6, 8 — the even values seen for real thiol-linked
+      ADCs (e.g. brentuximab vedotin). Use ``n_sites=4`` for a standard IgG1.
+    * **Stochastic amine / lysine conjugation (drugs_per_site=1).**
+      Each of many surface lysines reacts independently and carries a single
+      drug, giving the classic smooth binomial over 0, 1, 2, ... drugs.
+
+    Each of ``n_sites`` sites reacts independently with probability ``p_site``;
+    a reacted site adds ``drugs_per_site`` drugs. The occupied-site count is
+    Binomial(n_sites, p_site), so with ``d = drugs_per_site``:
+
+        P(DAR = d*j) = C(n, j) p^j (1-p)^(n-j),  j = 0..n
+        mean DAR     = d * n * p
+        variance     = d^2 * n * p * (1-p)
 
     Two ways to set the occupancy probability:
 
     * ``p_site`` directly (0..1), or
     * ``feed_ratio`` (drug:mAb molar feed) times ``efficiency`` (fraction of
-      offered drug that actually conjugates), spread over the sites:
-      ``p_site = feed_ratio * efficiency / n_sites``.
+      offered drug that conjugates), spread over the total drug-carrying
+      capacity (``n_sites * drugs_per_site``):
+      ``p_site = feed_ratio * efficiency / (n_sites * drugs_per_site)``.
+      With this definition mean DAR = feed_ratio * efficiency exactly.
 
-    Returns the per-species probabilities plus mean/variance/SD (computed via
-    :func:`distribution_dispersion` so the moment definitions never drift).
-    The SD is the intrinsic drug-load *heterogeneity* the model predicts, not a
-    measurement error.
+    Returns the per-species probabilities (keyed by DAR, i.e. multiples of
+    ``drugs_per_site``) plus mean/variance/SD. The SD is the intrinsic
+    drug-load *heterogeneity* the model predicts, not a measurement error.
     """
     if n_sites < 1:
         raise ValueError("n_sites must be >= 1")
+    if drugs_per_site < 1:
+        raise ValueError("drugs_per_site must be >= 1")
+    max_dar = n_sites * drugs_per_site
     if p_site is None:
         if feed_ratio is None:
             raise ValueError("provide either p_site or feed_ratio")
         if feed_ratio < 0 or efficiency < 0:
             raise ValueError("feed_ratio and efficiency must be >= 0")
-        p_site = (feed_ratio * efficiency) / n_sites
+        p_site = (feed_ratio * efficiency) / max_dar
     if not (0.0 <= p_site <= 1.0):
         raise ValueError(
             "implied per-site probability outside [0,1]; "
-            "feed_ratio*efficiency exceeds n_sites"
+            "feed_ratio*efficiency exceeds the drug-carrying capacity "
+            "(n_sites * drugs_per_site)"
         )
     dist = {
-        k: comb(n_sites, k) * p_site ** k * (1.0 - p_site) ** (n_sites - k)
-        for k in range(n_sites + 1)
+        drugs_per_site * j: comb(n_sites, j) * p_site ** j
+        * (1.0 - p_site) ** (n_sites - j)
+        for j in range(n_sites + 1)
     }
     disp = distribution_dispersion(dist)
     return {
@@ -1117,6 +1211,8 @@ def predict_dar_distribution(
         "mean_dar": disp["mean"],
         "variance": disp["variance"],
         "sd": disp["sd"],
+        "drugs_per_site": drugs_per_site,
+        "max_dar": max_dar,
     }
 
 
