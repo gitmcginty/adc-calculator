@@ -1390,8 +1390,10 @@ const AB_CELLS = (() => {
 // they read as attached to the arms rather than floating off to the sides.
 const AB_PAYLOAD_GLYPH = "\u2726";                    // ✦ four-pointed star
 const AB_PAYLOADS = [
-  // left drug — cluster of 4 hugging the left of the neck
-  { r: 4, c: 1, g: 0 }, { r: 5, c: 0, g: 0 }, { r: 5, c: 1, g: 0 }, { r: 6, c: 1, g: 0 },
+  // left drug — cluster of 4 hugging the left of the neck.
+  // Exact mirror of the right cluster (col -> AB_SW-1-col) so it sits flush
+  // against the silhouette instead of floating a column too far out.
+  { r: 4, c: 2, g: 0 }, { r: 5, c: 2, g: 0 }, { r: 5, c: 3, g: 0 }, { r: 6, c: 3, g: 0 },
   // right drug — cluster of 4, pulled in from the far edge (was col 14)
   { r: 4, c: 13, g: 1 }, { r: 5, c: 12, g: 1 }, { r: 5, c: 13, g: 1 }, { r: 6, c: 12, g: 1 },
 ];
@@ -1500,7 +1502,7 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
       // per-star twinkle, offset within the cluster by its position so the
       // group shimmers as a loose unit rather than a single blinking blob.
       const tw = Math.sin(t * 2.4 + a.phase + p.g * 1.9 + (p.r + p.c) * 0.5);
-      put(bx + p.c, by + p.r + 1, AB_PAYLOAD_GLYPH, tw > -0.4 ? "P" : "p");
+      put(bx + p.c, by + p.r + 2, AB_PAYLOAD_GLYPH, tw > -0.4 ? "P" : "p");
     }
   }
   return g;
