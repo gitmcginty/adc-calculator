@@ -3,6 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Content Security Policy: this is a fully self-contained, offline app. It makes
+     no network requests and loads no third-party resources, so every fetch/connect
+     origin is denied. Inline <script>/style and inline event handlers are used
+     throughout, so 'unsafe-inline' is required for script-src/style-src; blob: is
+     allowed for img/media so exported-file object URLs work. This blocks loading or
+     exfiltrating to any external origin and is defense-in-depth against injection. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'">
 <meta name="description" content="Antibody–drug conjugate design calculator: DAR determination, conjugation planning, yield/formulation, and an in vitro dosing plate designer — all from one tested calculation core.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
@@ -1347,6 +1354,13 @@ const ADC = {
  */
 const $ = (id) => document.getElementById(id);
 
+/* HTML-escape any user-controlled string before it is interpolated into an
+ * innerHTML template. Escapes all five sensitive characters so a single helper
+ * is safe in both element-text and quoted-attribute contexts (prevents stored
+ * XSS from dye names/notes, group/cell-line labels, and imported JSON fields). */
+const escHtml = (s) => String(s == null ? "" : s).replace(/[&<>"']/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
 /* ---- Animated ASCII antibody field (footer decoration) ---------------------
  * A drifting fleet of small cartoon IgG molecules over a faint shimmer, in the
  * footer. The heavy and light chains are drawn to scale: the light chain (VL-CL)
@@ -2315,14 +2329,14 @@ function renderDoseGroups() {
     try {
       ({ nPoints, replicates } = dsComputeGroup(g));
     } catch (err) {
-      h += `<tr data-gid="${g.id}">${swatch}<td>${g.name || "—"}</td><td>${g.cell || "—"}</td><td>${g.adc || "—"}</td>`
-        + `<td class="num" colspan="5" style="color:var(--danger)">&#9888; ${err && err.message ? err.message : err}</td>`
+      h += `<tr data-gid="${g.id}">${swatch}<td>${escHtml(g.name) || "—"}</td><td>${escHtml(g.cell) || "—"}</td><td>${escHtml(g.adc) || "—"}</td>`
+        + `<td class="num" colspan="5" style="color:var(--danger)">&#9888; ${escHtml(err && err.message ? err.message : err)}</td>`
         + actions + `</tr>`;
       return;
     }
     const topInGroupUnit = ADC.convertConcentration(ADC.convertConcentration(g.topInUnit, g.unit, "uM"), "uM", dsUnit());
     h += `<tr data-gid="${g.id}">${swatch}`
-      + `<td>${g.name || "—"}</td><td>${g.cell || "—"}</td><td>${g.adc || "—"}</td>`
+      + `<td>${escHtml(g.name) || "—"}</td><td>${escHtml(g.cell) || "—"}</td><td>${escHtml(g.adc) || "—"}</td>`
       + `<td class="num">${nPoints}</td><td class="num">${replicates}</td>`
       + `<td class="num">${fmt(topInGroupUnit, 4)}</td><td class="num">${fmt(g.fold, 2)}</td>`
       + `<td>${g.mode === "spike" ? fmt(g.factor, 0) + "× spike" : "replace"}</td>`
@@ -2579,12 +2593,18 @@ function applyDesign(d) {
   if (d.wellVolumeUL != null) $("ds_well").value = d.wellVolumeUL;
   const [rows, cols] = dsGeom();
   let maxId = 0;
+  // Coerce free-text fields from an imported file to plain strings (capped),
+  // so a crafted non-string value can't reach the renderers; and validate the
+  // color is a plain CSS token, never an arbitrary attribute payload.
+  const str = (v) => (v == null ? "" : String(v)).slice(0, 200);
+  const safeColor = (v) => (typeof v === "string" && /^#[0-9a-fA-F]{3,8}$/.test(v)) ? v : null;
   dsState.groups = d.groups.map((g, i) => {
     const cells = (g.cells || []).filter(([r, c]) => r < rows && c < cols).map(([r, c]) => [r, c]);
     const id = i + 1; maxId = id;
     return Object.assign({}, g, {
       id, cells, cellSet: new Set(cells.map(([r, c]) => dsKey(r, c))),
-      color: g.color || DS_GROUP_COLORS[i % DS_GROUP_COLORS.length],
+      name: str(g.name), cell: str(g.cell), adc: str(g.adc),
+      color: safeColor(g.color) || DS_GROUP_COLORS[i % DS_GROUP_COLORS.length],
     });
   }).filter((g) => g.cells.length);
   dsState.nextId = maxId + 1;
@@ -2613,7 +2633,7 @@ function renderDesignList() {
   const names = Object.keys(store).sort((a, b) => a.localeCompare(b));
   const sel = $("ds_design_list");
   sel.innerHTML = names.length
-    ? names.map((n) => `<option value="${n.replace(/"/g, "&quot;")}">${n}</option>`).join("")
+    ? names.map((n) => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join("")
     : `<option value="">(no saved designs)</option>`;
 }
 
@@ -2708,13 +2728,27 @@ function renderDyes() {
   let html = "<thead><tr>" + cols.map((c) => `<th class="${c[2] ? "num" : ""}" onclick="sortDyes('${c[0]}')">${c[1]}</th>`).join("") + "<th></th></tr></thead><tbody>";
   rows.forEach((d) => {
     const tag = d._user ? ' <span class="tag-user">yours</span>' : "";
-    const del = d._user ? `<button class="dye-del" title="delete this dye" onclick='event.stopPropagation();deleteUserDye(${JSON.stringify(d.name)})'>&times;</button>` : "";
-    html += `<tr class="${d._user ? "userdye" : ""}" onclick='loadDyeToUV(${JSON.stringify(d)})' title="load into UV/Vis calculator">
-      <td>${d.name}${tag}</td><td class="num">${d.mw}</td><td class="num">${(d.e_lmax ?? 0).toLocaleString()}</td>
+    // Identify the dye by its (escaped) name in a data-attribute rather than
+    // JSON-injecting the object into an inline onclick — event delegation below
+    // looks it up, so no user string ever lands in an executable attribute.
+    const del = d._user ? `<button class="dye-del" title="delete this dye" data-dye-del="${escHtml(d.name)}">&times;</button>` : "";
+    html += `<tr class="${d._user ? "userdye" : ""}" data-dye="${escHtml(d.name)}" title="load into UV/Vis calculator">
+      <td>${escHtml(d.name)}${tag}</td><td class="num">${d.mw}</td><td class="num">${(d.e_lmax ?? 0).toLocaleString()}</td>
       <td class="num">${d.cf280}</td><td class="num">${(d.e280 ?? 0).toLocaleString()}</td>
-      <td class="num">${d.lmax ?? "&mdash;"}</td><td>${d.comment ?? ""}</td><td class="num">${del}</td></tr>`;
+      <td class="num">${d.lmax ?? "&mdash;"}</td><td>${escHtml(d.comment ?? "")}</td><td class="num">${del}</td></tr>`;
   });
-  $("dye_table").innerHTML = html + "</tbody>";
+  const tbl = $("dye_table");
+  tbl.innerHTML = html + "</tbody>";
+  // Delegated click handling (bound once): row → load into UV/Vis; × → delete.
+  if (!tbl._dyeBound) {
+    tbl._dyeBound = true;
+    tbl.addEventListener("click", (ev) => {
+      const delBtn = ev.target.closest("[data-dye-del]");
+      if (delBtn) { ev.stopPropagation(); deleteUserDye(delBtn.getAttribute("data-dye-del")); return; }
+      const row = ev.target.closest("tr[data-dye]");
+      if (row) { const dye = findDye(row.getAttribute("data-dye")); if (dye) loadDyeToUV(dye); }
+    });
+  }
 }
 function sortDyes(k) { dyeSort.dir = dyeSort.key === k ? -dyeSort.dir : 1; dyeSort.key = k; renderDyes(); }
 function loadDyeToUV(d) {
