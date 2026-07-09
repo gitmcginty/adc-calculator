@@ -177,6 +177,223 @@ def test_yield_and_formulation():
     assert y.v_change_mL == approx(-1.0)
 
 
+# ---- In vitro dosing / serial dilution --------------------------------------
+def test_plate_well_volume_lookup():
+    assert core.plate_well_volume("96") == approx(100.0)
+    assert core.plate_well_volume("384") == approx(50.0)
+    assert core.plate_well_volume(6) == approx(2000.0)   # int accepted
+    with pytest.raises(ValueError):
+        core.plate_well_volume("100")
+
+
+def test_plan_serial_dilution_spike_golden():
+    """Spec §8b golden fixture: 1000 µM stock, top 10 µM, 4-fold, 4 pts, 3 reps,
+    96-well (100 µL), 10x spike, no overage."""
+    p = core.plan_serial_dilution(
+        stock_uM=1000, top_uM=10, fold=4, n_points=4, replicates=3,
+        well_volume_uL=100.0, dose_mode="spike", dose_factor=10.0, overage=1.0)
+    assert p.final_concs_uM == [approx(10.0), approx(2.5), approx(0.625), approx(0.15625)]
+    assert p.working_concs_uM[0] == approx(100.0)         # 10x the final
+    assert p.dose_factor == approx(10.0)
+    assert p.v_add_per_well_uL == approx(100.0 / 9.0)     # well / (10-1)
+    assert p.final_well_volume_uL == approx(100.0 + 100.0 / 9.0)
+    assert p.v_use_per_tube_uL == approx(100.0 / 3.0)     # add * reps * overage
+    assert p.v_transfer_uL == approx(100.0 / 9.0)         # v_use / (fold-1)
+    assert p.v_tube_total_uL == approx(100.0 / 3.0 + 100.0 / 9.0)
+    assert p.total_stock_uL == approx(4.444444444444444)
+    assert p.total_wells == 12
+    # per-tube self-consistency: transfer + diluent == prep total for every tube
+    for t in p.tubes:
+        assert t.total_uL == approx(p.v_tube_total_uL)
+        assert t.transfer_in_uL + t.diluent_uL == approx(t.total_uL)
+    # downstream tubes each receive the serial transfer and top up with medium
+    assert p.tubes[1].transfer_in_uL == approx(100.0 / 9.0)
+    assert p.tubes[1].diluent_uL == approx(100.0 / 3.0)
+    assert p.warnings == []
+
+
+def test_plan_serial_dilution_spike_final_conc_back_check():
+    """After spiking v_add of a df-fold solution into the well, the in-well
+    concentration must equal the intended final value."""
+    p = core.plan_serial_dilution(
+        stock_uM=1000, top_uM=10, fold=3, n_points=8, replicates=3,
+        well_volume_uL=100.0, dose_mode="spike", dose_factor=10.0)
+    va = p.v_add_per_well_uL
+    for t in p.tubes:
+        in_well = t.working_conc_uM * va / (100.0 + va)
+        assert in_well == approx(t.final_conc_uM)
+
+
+def test_plan_serial_dilution_replace_mode():
+    p = core.plan_serial_dilution(
+        stock_uM=500, top_uM=50, fold=2, n_points=6, replicates=4,
+        well_volume_uL=200.0, dose_mode="replace", overage=1.0)
+    # replace -> dosing solution already at final conc, full-volume exchange
+    assert p.dose_factor == approx(1.0)
+    assert p.working_concs_uM == p.final_concs_uM
+    assert p.v_add_per_well_uL == approx(200.0)
+    assert p.final_well_volume_uL == approx(200.0)
+    assert p.total_wells == 24
+
+
+def test_plan_serial_dilution_warns_dilute_stock():
+    p = core.plan_serial_dilution(
+        stock_uM=50, top_uM=10, fold=3, n_points=6, replicates=3,
+        well_volume_uL=100.0, dose_mode="spike", dose_factor=10.0)
+    # top working conc = 100 µM > 50 µM stock
+    assert any("too dilute" in w for w in p.warnings)
+
+
+def test_plan_serial_dilution_rejects_bad_input():
+    with pytest.raises(ValueError):
+        core.plan_serial_dilution(stock_uM=0, top_uM=10, fold=3, n_points=4,
+                                  replicates=3, well_volume_uL=100.0)
+    with pytest.raises(ValueError):
+        core.plan_serial_dilution(stock_uM=1000, top_uM=10, fold=1, n_points=4,
+                                  replicates=3, well_volume_uL=100.0)  # fold must be > 1
+    with pytest.raises(ValueError):
+        core.plan_serial_dilution(stock_uM=1000, top_uM=10, fold=3, n_points=4,
+                                  replicates=3, well_volume_uL=100.0,
+                                  dose_mode="spike", dose_factor=1.0)  # bad spike factor
+
+
+# ---- Plate map --------------------------------------------------------------
+def test_plate_map_by_column_layout():
+    concs = [10.0, 3.333, 1.111, 0.37]
+    pm = core.plate_map(concs, 3, "96", "by_column")
+    assert pm.orientation == "by_column"
+    assert (pm.rows, pm.cols) == (8, 12)
+    assert pm.used == 12 and pm.capacity == 96
+    assert pm.warnings == []
+    # dose increases across columns; replicates fill rows within a column
+    assert (pm.wells[0].row_label, pm.wells[0].col_label) == ("A", 1)
+    assert pm.wells[0].point == 0 and pm.wells[0].replicate == 1
+    assert (pm.wells[1].row_label, pm.wells[1].col_label) == ("B", 1)  # replicate 2, same dose
+    assert pm.wells[1].final_conc_uM == approx(10.0)
+    assert (pm.wells[3].row_label, pm.wells[3].col_label) == ("A", 2)  # next dose, column 2
+    assert pm.wells[3].point == 1 and pm.wells[3].final_conc_uM == approx(3.333)
+
+
+def test_plate_map_by_row_layout():
+    pm = core.plate_map([10.0, 5.0, 2.5], 4, "96", "by_row")
+    assert pm.orientation == "by_row"
+    # each point occupies a row; replicates fill columns
+    assert (pm.wells[0].row_label, pm.wells[0].col_label) == ("A", 1)
+    assert (pm.wells[1].row_label, pm.wells[1].col_label) == ("A", 2)  # replicate 2
+    assert (pm.wells[4].row_label, pm.wells[4].col_label) == ("B", 1)  # next dose row
+
+
+def test_plate_map_row_labels_wrap():
+    assert core._row_label(0) == "A"
+    assert core._row_label(25) == "Z"
+    assert core._row_label(26) == "AA"
+    assert core._row_label(31) == "AF"  # 1536-well last row
+
+
+def test_plate_map_sequential_fallback_and_warning():
+    # 14 points > 12 columns -> cannot use by_column, falls back to sequential
+    pm = core.plate_map(list(range(1, 15)), 3, "96", "by_column")
+    assert pm.orientation == "sequential"
+    assert any("do not fit" in w for w in pm.warnings)
+    assert pm.used == 42
+
+
+def test_plate_map_overflow_warning():
+    # 96-well, 40 points x 3 = 120 > 96 capacity
+    pm = core.plate_map(list(range(40)), 3, "96", "by_column")
+    assert pm.used == 120
+    assert any("exceeds" in w for w in pm.warnings)
+    # off-plate wells are flagged, not silently dropped
+    assert any(not w.in_bounds for w in pm.wells)
+
+
+def test_plate_map_csv_roundtrip():
+    pm = core.plate_map([10.0, 5.0], 2, "96", "by_column")
+    csv = core.plate_map_to_csv(pm)
+    lines = csv.splitlines()
+    assert lines[0] == "well,row,column,point,replicate,final_conc_uM"
+    assert lines[1].startswith("A1,A,1,1,1,")
+    assert len(lines) == 1 + pm.used
+
+
+def test_plate_map_rejects_bad_input():
+    with pytest.raises(ValueError):
+        core.plate_map([10.0], 3, "100")           # unknown plate
+    with pytest.raises(ValueError):
+        core.plate_map([], 3, "96")                # no points
+    with pytest.raises(ValueError):
+        core.plate_map([10.0], 0, "96")            # no replicates
+
+
+# ---- Concentration units ----------------------------------------------------
+def test_convert_concentration():
+    assert core.convert_concentration(5.0, "uM", "nM") == approx(5000.0)
+    assert core.convert_concentration(250.0, "nM", "uM") == approx(0.25)
+    assert core.convert_concentration(1.0, "uM", "pM") == approx(1e6)
+    assert core.convert_concentration(3.0, "nM", "nM") == approx(3.0)
+    with pytest.raises(ValueError):
+        core.convert_concentration(1.0, "mM", "nM")
+
+
+# ---- Selection-driven dosing ------------------------------------------------
+def test_series_shape_from_selection():
+    assert core.series_shape_from_selection(3, 4, "by_column") == (4, 3)
+    assert core.series_shape_from_selection(3, 4, "by_row") == (3, 4)
+    with pytest.raises(ValueError):
+        core.series_shape_from_selection(0, 4)
+
+
+def test_assign_selection_by_row_decreasing_down():
+    # dose decreases top->bottom; replicates across columns
+    cells = [(r, c) for r in range(2, 6) for c in range(5, 8)]  # offset 4x3 block
+    concs = [10.0, 2.5, 0.625, 0.15625]
+    asg = core.assign_selection(cells, concs, "by_row")
+    assert asg.rectangular and (asg.rows, asg.cols) == (4, 3)
+    assert asg.origin == (2, 5) and asg.warnings == []
+    top = next(w for w in asg.wells if (w.row, w.col) == (2, 5))
+    bot = next(w for w in asg.wells if (w.row, w.col) == (5, 5))
+    assert top.point == 0 and top.final_conc_uM == approx(10.0) and top.replicate == 1
+    assert bot.point == 3 and bot.final_conc_uM == approx(0.15625)
+    rep2 = next(w for w in asg.wells if (w.row, w.col) == (2, 6))
+    assert rep2.point == 0 and rep2.replicate == 2
+
+
+def test_assign_selection_by_column():
+    cells = [(r, c) for r in range(3) for c in range(4)]
+    concs = [10.0, 2.5, 0.625, 0.15625]
+    asg = core.assign_selection(cells, concs, "by_column")
+    a1 = next(w for w in asg.wells if (w.row, w.col) == (0, 0))
+    a2 = next(w for w in asg.wells if (w.row, w.col) == (0, 1))
+    assert a1.point == 0 and a1.replicate == 1
+    assert a2.point == 1 and a2.final_conc_uM == approx(2.5)
+
+
+def test_assign_selection_non_rectangular_and_overflow():
+    cells = [(0, 0), (0, 1), (0, 2), (1, 0)]  # L-shape, not a full box
+    asg = core.assign_selection(cells, [10.0, 5.0], "by_column")
+    assert asg.rectangular is False
+    assert any("along the dose axis" in w for w in asg.warnings)  # 2 pts, span 3
+    # well past the series length gets no concentration
+    off = next(w for w in asg.wells if (w.row, w.col) == (0, 2))
+    assert off.point == 2 and off.final_conc_uM is None
+
+
+def test_assign_selection_rejects_empty():
+    with pytest.raises(ValueError):
+        core.assign_selection([], [10.0])
+
+
+def test_aggregate_dosing_plans():
+    p1 = core.plan_serial_dilution(stock_uM=1000, top_uM=10, fold=4, n_points=4,
+                                   replicates=3, well_volume_uL=100)
+    p2 = core.plan_serial_dilution(stock_uM=1000, top_uM=5, fold=2, n_points=3,
+                                   replicates=2, well_volume_uL=100)
+    agg = core.aggregate_dosing_plans([p1, p2])
+    assert agg["n_groups"] == 2
+    assert agg["total_wells"] == p1.total_wells + p2.total_wells
+    assert agg["total_stock_uL"] == approx(p1.total_stock_uL + p2.total_stock_uL)
+
+
 # ---- Dye library ------------------------------------------------------------
 def test_dye_library_integrity():
     assert len(core.DYE_LIBRARY) == 22
@@ -270,6 +487,43 @@ def test_linear_regression_rejects_degenerate_input():
         core.linear_regression([2.0, 2.0], [1.0, 3.0])  # no distinct x
     with pytest.raises(ValueError):
         core.extinction_coefficient(CONC_M, AB280, 0.0)  # bad path length
+
+
+# ---- Uncertainty / error propagation ----------------------------------------
+def test_dar_uv_uncertainty_matches_point_estimate():
+    u = core.dar_uv_uncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP,
+                                sigma_a280=0.01, sigma_a_lmax=0.01)
+    assert u["dar"] == approx(2.4140809554780795)
+    assert u["sigma_dar"] == approx(0.03370113601940267)
+    assert u["ci95_low"] == approx(2.4140809554780795 - 1.96 * 0.03370113601940267)
+    assert u["ci95_high"] == approx(2.4140809554780795 + 1.96 * 0.03370113601940267)
+
+
+def test_dar_uv_uncertainty_zero_sigma_is_degenerate():
+    u = core.dar_uv_uncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP)
+    assert u["sigma_dar"] == 0.0
+    assert u["ci95_low"] == approx(u["dar"])
+    assert u["ci95_high"] == approx(u["dar"])
+
+
+def test_distribution_dispersion_hic():
+    d = core.distribution_dispersion({0: 5, 1: 15, 2: 45, 3: 25, 4: 10})
+    assert d["mean"] == approx(2.2)
+    assert d["variance"] == approx(0.96)
+    assert d["sd"] == approx(0.9797958971132712)
+
+
+def test_dar_lcms_reduced_uncertainty():
+    u = core.dar_lcms_reduced_uncertainty({0: 10, 1: 90}, {0: 5, 1: 20, 2: 75})
+    assert u["dar"] == approx(5.2)
+    assert u["light_sd"] == approx(0.3)
+    assert u["heavy_sd"] == approx(0.5567764362830022)
+    assert u["sigma_dar"] == approx(0.8944271909999159)
+
+
+def test_distribution_dispersion_rejects_empty():
+    with pytest.raises(ValueError):
+        core.distribution_dispersion({})
 
 
 if __name__ == "__main__":
