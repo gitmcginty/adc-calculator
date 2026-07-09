@@ -77,6 +77,25 @@ conc_mgml = (A280 − Aλmax · ε280_LP/ελmax_LP) / ε280_mAb_mgml
 
 ---
 
+### 3b. Scattering / turbidity baseline correction (`scatter_corrected_absorbance`)
+
+Turbid or aggregated samples scatter light, adding a chromophore-independent
+baseline that biases A280 (and therefore concentration and DAR) high. Read a
+reference absorbance `A_ref` at a wavelength where neither antibody nor payload
+absorbs (typically 320–340 nm) and extrapolate a Rayleigh-type baseline:
+
+```
+A_scatter(λ)   = A_ref · (λ_ref / λ)^p               # p = 4 (Rayleigh) default, exposed
+A280_corrected = max(A280 − A_scatter(280), 0)
+Aλmax_corrected= max(Aλmax − A_scatter(λmax), 0)
+```
+
+Feed the corrected absorbances into `dar_uv` / `adc_properties`. A zero
+reference read is the identity (no correction); a reference large enough to
+drive a corrected read negative is floored at 0 (physically meaningless).
+
+---
+
 ## 4. Ellman's free-thiol assay (PDF p.10)
 
 ```
@@ -93,6 +112,23 @@ AUC-weighted average over resolved DAR species (peak area at 280 nm ∝ AUC):
 ```
 DAR_HIC = Σ_i (AUC_i · i) / Σ_i AUC_i           i = 0,1,2,…,n
 ```
+
+### 5b. Drug-load-corrected HIC DAR (`dar_hic_corrected`)
+
+The uncorrected form above treats 280 nm peak area% as **molar** abundance%.
+That is only true when every species has the same 280 nm extinction. The
+payload absorbs at 280 nm, so species with k drugs have
+`ε_k = ε280_mab + k·ε280_payload`, and measured area is `A_k = c_k·ε_k`. To
+recover molar abundance, divide each area by its species extinction before
+averaging:
+```
+c_k  ∝  A_k / (ε280_mab + k·ε280_payload)
+DAR_HIC,corr = Σ_k (k · c_k) / Σ_k c_k
+species%_k   = 100 · c_k / Σ_j c_j
+```
+When `ε280_payload = 0` this reduces exactly to the uncorrected `DAR_HIC`.
+Because high-DAR peaks carry more 280 nm signal per mole, the correction
+**lowers** the reported DAR relative to the naive area-weighted mean.
 
 ---
 
@@ -138,6 +174,29 @@ v/v propylene glycol for hydrophobic payloads. Final DMSO target 10% v/v.
 
 **Free-thiol count** per full reduction: IgG1 = 8 (4 interchain disulfides →
 implemented as `disulfides_reduced × 2`).
+
+---
+
+## 7b. Predicted DAR distribution (binomial site-occupancy model)
+
+For stochastic cysteine/lysine conjugation, drug load per antibody follows a
+**Binomial** distribution over `n` equivalent, independent sites each occupied
+with probability `p`:
+```
+P(DAR=k) = C(n,k) · p^k · (1−p)^(n−k)        k = 0,1,…,n
+mean DAR = n·p
+variance = n·p·(1−p)      SD = sqrt(variance)
+```
+The per-site probability may be given directly, or derived from the molar feed
+ratio and conjugation efficiency:
+```
+p = feed_ratio · efficiency / n
+```
+Implemented as `predict_dar_distribution(n_sites, p_site=…|feed_ratio=…, efficiency=…)`;
+moments are taken through `distribution_dispersion` so definitions never drift.
+The SD is the intrinsic drug-load **heterogeneity** predicted by the model, not
+a measurement error. Errors if `n_sites<1`, neither `p_site` nor `feed_ratio`
+given, or the implied `p` falls outside `[0,1]`.
 
 ---
 
@@ -349,8 +408,12 @@ From the spreadsheet inputs: `MW_mAb=145000`, `ε280_mAb_mgml=1.4`
 
 Other fixtures:
 - Ellman `(A412=0.5, A280=0.6, ε280=203000)` → **11.95524** thiols
+- Scatter `(A_ref=0.05, λ_ref=320, λ=280, p=4)` → **0.085298**; corrected `(A280=1.0, Aλmax=0.5, A_ref=0.05, 320, 495, 4)` → A280→**0.914702**, Aλmax→**0.491267**
 - HIC `{0:5,1:15,2:45,3:25,4:10}` → **2.2**
+- HIC corrected `{0:10,2:50,4:30,6:10}, ε280_mab=203000, ε280_payload=5000` → **2.741596** (uncorrected 2.8); species% DAR2 → **50.870418**
 - LC-MS reduced `LC{0:10,1:90}, HC{0:5,1:20,2:75}` → **5.2**
+- DAR distribution `n=4, feed_ratio=2.5, efficiency=0.8` → p=**0.5**, mean=**2.0**, SD=**1.0**, P(k=2)=**0.375**
+- DAR-UV uncertainty (Case B, σA280=σAλmax=0.01) → σ_DAR=**0.033701**; with ε terms (σε280_mAb=2030, σε280_LP=364.35, σελmax_LP=481.2) → σ_DAR=**0.137956** (ε-coefficient uncertainty dominates)
 
 Tolerance for all: relative 1e-6.
 
