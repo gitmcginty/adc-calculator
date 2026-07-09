@@ -72,8 +72,11 @@ nav.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
 nav.tabs .tab-div{align-self:center;width:1px;height:22px;background:var(--line);margin:0 8px 0 auto}
 svg.ic{width:1em;height:1em;flex:none;vertical-align:-0.14em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 button svg.ic{margin-right:.4em}
-nav.tabs button.bench{color:var(--ink);font-weight:600;display:inline-flex;align-items:center;gap:.4em}
-nav.tabs button.bench.active{color:var(--accent);border-bottom-color:var(--accent)}
+nav.tabs button.bench{color:var(--accent);font-weight:600;display:inline-flex;align-items:center;gap:.4em;
+  background:var(--accent-soft);border:1px solid var(--accent-line);border-radius:8px;
+  padding:7px 13px;margin:5px 0 5px 4px;align-self:center}
+nav.tabs button.bench:hover{border-color:var(--accent);background:var(--accent-soft)}
+nav.tabs button.bench.active{color:var(--on-accent);background:var(--accent);border-color:var(--accent);border-bottom-color:var(--accent)}
 @media(max-width:640px){nav.tabs .tab-div{display:none}}
 main{padding:var(--s3) 0 64px}
 .panel{display:none}
@@ -98,6 +101,9 @@ main{padding:var(--s3) 0 64px}
 @media(max-width:760px){.grid,.grid.cols3{grid-template-columns:1fr}}
 .split{display:grid;grid-template-columns:1.05fr .95fr;gap:var(--s4)}
 @media(max-width:860px){.split{grid-template-columns:1fr}}
+/* keep a results/plan column in view while the paired form column scrolls */
+.split>.sticky-side{position:sticky;top:70px;align-self:start}
+@media(max-width:860px){.split>.sticky-side{position:static}}
 label.field{display:block;margin-bottom:var(--s2)}
 label.field span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:500}
 label.field .unit{color:var(--faint);font-weight:400}
@@ -132,6 +138,11 @@ details.advanced[open]>summary{border-bottom:1px solid var(--line)}
   border-radius:0 8px 8px 0;font-size:12.5px;color:var(--muted);margin-top:var(--s2);line-height:1.6}
 .note b{color:var(--ink);font-weight:600}
 .note ul{margin:6px 0 0;padding-left:18px}.note li{margin:3px 0}
+/* danger note inside a results panel — flags a physically implausible result */
+.res-note{border-left:2px solid var(--danger);background:var(--danger-soft);color:var(--danger);
+  padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.5;margin-top:var(--s2)}
+.rrow .v.neg{color:var(--danger)}
+.rrow.primary .v.neg{color:var(--danger)}
 .btnrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-top:var(--s1)}
 button.act{background:var(--accent);color:var(--on-accent);border:none;padding:9px 17px;border-radius:8px;cursor:pointer;
   font-size:13px;font-weight:500;transition:background .12s}
@@ -172,7 +183,7 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
 .tag{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid transparent;border-radius:20px;padding:2px 11px;
   font-size:11.5px;margin:2px 4px 2px 0;font-family:var(--mono)}
 .footer{color:var(--faint);font-size:11.5px;text-align:center;padding:var(--s3)}
-#ab_art{display:block;margin:24px auto 0;max-width:100%;overflow:hidden;
+#ab_art{display:block;margin:16px auto 0;max-width:100%;max-height:312px;overflow:hidden;
   font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   font-size:11px;line-height:12px;letter-spacing:0;white-space:pre;
   color:var(--faint);opacity:.55;user-select:none;-webkit-user-select:none;
@@ -181,8 +192,10 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
   mask-image:linear-gradient(to right,#000 0,#000 98.5%,transparent)}
 #ab_art b{color:var(--accent-hover);font-weight:600;opacity:.95}
 #ab_art i{color:var(--accent);font-style:normal;font-weight:500;opacity:.62}
-#ab_art u{color:var(--warn);font-weight:700;text-decoration:none;opacity:.95}
-#ab_art s{color:var(--warn);font-weight:700;text-decoration:none;opacity:.45}
+#ab_art u,#ab_art s{color:var(--warn);font-weight:700;text-decoration:none;
+  display:inline-block;width:1ch;text-align:center;overflow:visible}
+#ab_art u{opacity:.95}
+#ab_art s{opacity:.45}
 @media (max-width:640px){#ab_art{display:none}}
 .sub{font-size:11.5px;color:var(--faint);margin-top:2px}
 .regbox{background:var(--result);border:1px solid var(--line);border-radius:12px;padding:17px 19px}
@@ -221,6 +234,8 @@ table.dye tr.just-added>td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .info-link{background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 12px;
   font-size:12px;cursor:pointer;font-weight:500}
 .info-link:hover{border-color:var(--accent);color:var(--accent)}
+.info-link.icon-only{padding:6px 8px}
+.info-link.icon-only svg.ic{margin-right:0;width:1.15em;height:1.15em}
 /* global active-ADC bar (identity travels with you across every tab) */
 .adcbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);
   border-left:3px solid var(--accent);border-radius:10px;padding:11px 16px;margin-top:var(--s2);margin-bottom:var(--s3);scroll-margin-top:64px}
@@ -244,6 +259,11 @@ table.plate td .pr{font-size:9px;line-height:1.1;opacity:.85}
 table.plate td.well{cursor:crosshair;background:var(--well);user-select:none;transition:background .05s}
 table.plate td.well:hover{background:var(--accent-soft)}
 table.plate td.well.pending{background:var(--accent);color:var(--on-accent);outline:2px solid var(--ink);outline-offset:-2px}
+/* ghost prompt shown over a blank plate to signal it's paintable */
+.ds-empty-prompt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;z-index:2}
+.ds-empty-prompt span{background:var(--panel);border:1px dashed var(--accent);color:var(--accent);
+  border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;box-shadow:0 2px 12px rgba(0,0,0,.08)}
 table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint);margin-left:6px;opacity:.5}
 </style>
 </head>
@@ -256,13 +276,14 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
   <symbol id="ic-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></symbol>
   <symbol id="ic-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
   <symbol id="ic-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/></symbol>
+  <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></symbol>
 </defs></svg>
 <header><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
 <div><h1>ADC Calculator</h1>
 <p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
 <div style="flex:none;display:flex;gap:8px;align-items:center">
-<button class="info-link" id="theme_toggle" onclick="toggleTheme()" aria-label="Toggle light / dark theme" title="Toggle light / dark theme" style="white-space:nowrap;display:inline-flex;align-items:center;gap:.4em"><span id="theme_toggle_label">Light mode</span></button>
-<button class="info-link" onclick="document.querySelector('#tabs button[data-tab=&quot;definitions&quot;]').click()" style="white-space:nowrap;display:inline-flex;align-items:center;gap:.4em"><svg class="ic"><use href="#ic-info"/></svg>Definitions</button>
+<button class="info-link icon-only" id="theme_toggle" onclick="toggleTheme()" aria-label="Switch to light mode" title="Switch to light mode" style="display:inline-flex;align-items:center;justify-content:center"><svg class="ic" id="theme_toggle_icon"><use href="#ic-sun"/></svg></button>
 </div>
 </div></header>
 <nav class="tabs wrap" id="tabs" role="tablist" aria-label="Calculator sections">
@@ -306,8 +327,8 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         <div>
           <label class="field"><span>Payload from library</span>
             <select id="uv_dyesel"><option value="">&mdash; manual entry &mdash;</option></select></label>
-          <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="uv_a280" type="number" step="0.0001" value="7.4315"></label>
-          <label class="field"><span>A&lambda;max <span class="unit">(AU)</span></span><input id="uv_almax" type="number" step="0.0001" value="0.7827"></label>
+          <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="uv_a280" type="number" min="0" step="0.0001" value="7.4315"></label>
+          <label class="field"><span>A&lambda;max <span class="unit">(AU)</span></span><input id="uv_almax" type="number" min="0" step="0.0001" value="0.7827"></label>
           <div class="grid">
             <label class="field"><span>&sigma; A280 <span class="unit">(AU, optional)</span></span><input id="uv_sa280" type="number" step="0.001" min="0" placeholder="e.g. 0.01"></label>
             <label class="field"><span>&sigma; A&lambda;max <span class="unit">(AU, optional)</span></span><input id="uv_salmax" type="number" step="0.001" min="0" placeholder="e.g. 0.01"></label>
@@ -318,16 +339,16 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
             <summary>Advanced &middot; constants</summary>
             <div class="advanced-body">
               <div class="grid">
-                <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="uv_mwmab" type="number" value="145000"></label>
-                <label class="field"><span>&epsilon;280 antibody <span class="unit">(mg/mL&middot;cm)&#8315;&#185;</span></span><input id="uv_e280mab_mass" type="number" step="0.01" value="1.4"></label>
-                <label class="field"><span>Dilution factor</span><input id="uv_df" type="number" step="0.1" value="1"></label>
-                <label class="field"><span>&epsilon;&lambda;max antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxmab" type="number" value="0"></label>
+                <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="uv_mwmab" type="number" min="0" step="any" value="145000"></label>
+                <label class="field"><span>&epsilon;280 antibody <span class="unit">(mg/mL&middot;cm)&#8315;&#185;</span></span><input id="uv_e280mab_mass" type="number" min="0" step="0.01" value="1.4"></label>
+                <label class="field"><span>Dilution factor</span><input id="uv_df" type="number" min="0" step="0.1" value="1"></label>
+                <label class="field"><span>&epsilon;&lambda;max antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxmab" type="number" min="0" step="any" value="0"></label>
               </div>
               <p class="derived-note">Payload extinction coefficients (auto-filled from the library selection):</p>
               <div class="grid cols3">
-                <label class="field"><span>LP MW <span class="unit">(g/mol)</span></span><input id="uv_mwlp" type="number" value="1559.62" readonly></label>
-                <label class="field"><span>&epsilon;280 LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_e280lp" type="number" value="7287" readonly></label>
-                <label class="field"><span>&epsilon;&lambda;max LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxlp" type="number" value="9624" readonly></label>
+                <label class="field"><span>LP MW <span class="unit">(g/mol)</span></span><input id="uv_mwlp" type="number" min="0" step="any" value="1559.62" readonly></label>
+                <label class="field"><span>&epsilon;280 LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_e280lp" type="number" min="0" step="any" value="7287" readonly></label>
+                <label class="field"><span>&epsilon;&lambda;max LP <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="uv_elmaxlp" type="number" min="0" step="any" value="9624" readonly></label>
               </div>
             </div>
           </details>
@@ -393,16 +414,16 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
             <option value="lysine">Lysine</option>
             <option value="mtgase">MTGase / glycan</option>
           </select></label>
-          <label class="field"><span>Antibody mass <span class="unit">(mg)</span></span><input id="cj_mass" type="number" step="0.1" value="10"></label>
-          <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="cj_mw" type="number" value="145000"></label>
-          <label class="field"><span>[mAb] in reaction <span class="unit">(g/L)</span></span><input id="cj_conc" type="number" step="0.1" value="5"></label>
-          <label class="field" id="cj_thiols_field"><span>Free thiols / mAb <span class="unit">(blank = auto)</span></span><input id="cj_thiols" type="number" step="1" placeholder="auto"></label>
-          <label class="field"><span>Final DMSO <span class="unit">(% v/v)</span></span><input id="cj_dmso" type="number" step="1" value="10"></label>
+          <label class="field"><span>Antibody mass <span class="unit">(mg)</span></span><input id="cj_mass" type="number" min="0" step="0.1" value="10"></label>
+          <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="cj_mw" type="number" min="0" step="any" value="145000"></label>
+          <label class="field"><span>[mAb] in reaction <span class="unit">(g/L)</span></span><input id="cj_conc" type="number" min="0" step="0.1" value="5"></label>
+          <label class="field" id="cj_thiols_field"><span>Free thiols / mAb <span class="unit">(blank = auto)</span></span><input id="cj_thiols" type="number" min="0" step="1" placeholder="auto"></label>
+          <label class="field"><span>Final DMSO <span class="unit">(% v/v)</span></span><input id="cj_dmso" type="number" min="0" step="1" value="10"></label>
         </div>
         <div id="cj_reagents"></div>
         <div class="btnrow"><button class="ghost" onclick="addReagentRow()">+ Add reagent</button></div>
       </div>
-      <div>
+      <div class="sticky-side">
         <div class="results" id="cj_out"></div>
         <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('conj')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_conj_msg" style="align-self:center"></span></div>
         <div class="note" id="cj_notes"></div>
@@ -419,10 +440,10 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
     <div class="formula">free thiols = (A412 / &epsilon;412) / (A280 / &epsilon;280,mAb)</div>
     <div class="split">
       <div><div class="grid">
-        <label class="field"><span>A412 <span class="unit">(AU)</span></span><input id="el_a412" type="number" step="0.0001" value="0.5"></label>
-        <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="el_a280" type="number" step="0.0001" value="0.6"></label>
-        <label class="field"><span>&epsilon;280 antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e280" type="number" value="203000"></label>
-        <label class="field"><span>&epsilon;412 TNB <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e412" type="number" value="14150"></label>
+        <label class="field"><span>A412 <span class="unit">(AU)</span></span><input id="el_a412" type="number" min="0" step="0.0001" value="0.5"></label>
+        <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="el_a280" type="number" min="0" step="0.0001" value="0.6"></label>
+        <label class="field"><span>&epsilon;280 antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e280" type="number" min="0" step="any" value="203000"></label>
+        <label class="field"><span>&epsilon;412 TNB <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e412" type="number" min="0" step="any" value="14150"></label>
       </div></div>
       <div><div class="results" id="el_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('ellman')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_ellman_msg" style="align-self:center"></span></div></div>
     </div>
@@ -439,11 +460,11 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
     <div class="formula">mass = C &middot; V   yield% = mass/mass&#8320; &times;100   V_target = mass / C_target</div>
     <div class="split">
       <div><div class="grid">
-        <label class="field"><span>Final [ADC] <span class="unit">(mg/mL)</span></span><input id="yl_conc" type="number" step="0.01" value="5.01"></label>
-        <label class="field"><span>Volume <span class="unit">(mL)</span></span><input id="yl_vol" type="number" step="0.1" value="2"></label>
-        <label class="field"><span>ADC MW <span class="unit">(g/mol)</span></span><input id="yl_mw" type="number" value="148765"></label>
-        <label class="field"><span>Starting mass <span class="unit">(mg, optional)</span></span><input id="yl_start" type="number" step="0.1" value="15"></label>
-        <label class="field"><span>Target [ADC] <span class="unit">(mg/mL, optional)</span></span><input id="yl_target" type="number" step="0.1" value="10"></label>
+        <label class="field"><span>Final [ADC] <span class="unit">(mg/mL)</span></span><input id="yl_conc" type="number" min="0" step="0.01" value="5.01"></label>
+        <label class="field"><span>Volume <span class="unit">(mL)</span></span><input id="yl_vol" type="number" min="0" step="0.1" value="2"></label>
+        <label class="field"><span>ADC MW <span class="unit">(g/mol)</span></span><input id="yl_mw" type="number" min="0" step="any" value="148765"></label>
+        <label class="field"><span>Starting mass <span class="unit">(mg, optional)</span></span><input id="yl_start" type="number" min="0" step="0.1" value="15"></label>
+        <label class="field"><span>Target [ADC] <span class="unit">(mg/mL, optional)</span></span><input id="yl_target" type="number" min="0" step="0.1" value="10"></label>
       </div></div>
       <div><div class="results" id="yl_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('yield')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_yield_msg" style="align-self:center"></span></div></div>
     </div>
@@ -482,11 +503,11 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
           <option value="pM">pM</option>
         </select>
       </label>
-      <label class="field"><span>Well volume <span class="unit">(&micro;L)</span></span><input id="ds_well" type="number" step="1" value="100"></label>
+      <label class="field"><span>Well volume <span class="unit">(&micro;L)</span></span><input id="ds_well" type="number" min="0" step="1" value="100"></label>
     </div>
 
     <p class="sub" id="ds_paint_hint">Drag across wells to select a block for a new group.</p>
-    <div id="ds_grid" style="overflow:auto;max-height:460px;touch-action:none"></div>
+    <div id="ds_grid" style="position:relative;overflow:auto;max-height:460px;touch-action:none"></div>
 
     <!-- Group editor: appears when a block is selected -->
     <div id="ds_group_form" class="card" style="margin-top:12px;display:none">
@@ -495,17 +516,17 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         <label class="field"><span>Group / label</span><input id="ds_g_name" type="text" placeholder="e.g. Group A"></label>
         <label class="field"><span>Cell line</span><input id="ds_g_cell" type="text" placeholder="e.g. SK-BR-3"></label>
         <label class="field"><span>ADC name</span><input id="ds_g_adc" type="text" placeholder="e.g. T-DM1"></label>
-        <label class="field"><span>ADC stock <span class="unit">(&micro;M)</span></span><input id="ds_g_stock" type="number" step="1" value="1000"></label>
-        <label class="field"><span>Top concentration <span class="unit" id="ds_g_top_unit">(nM)</span></span><input id="ds_g_top" type="number" step="1" value="1000"></label>
-        <label class="field"><span>Fold-dilution</span><input id="ds_g_fold" type="number" step="0.5" value="3"></label>
+        <label class="field"><span>ADC stock <span class="unit">(&micro;M)</span></span><input id="ds_g_stock" type="number" min="0" step="1" value="1000"></label>
+        <label class="field"><span>Top concentration <span class="unit" id="ds_g_top_unit">(nM)</span></span><input id="ds_g_top" type="number" min="0" step="1" value="1000"></label>
+        <label class="field"><span>Fold-dilution</span><input id="ds_g_fold" type="number" min="0" step="0.5" value="3"></label>
         <label class="field"><span>Dosing mode</span>
           <select id="ds_g_mode">
             <option value="spike" selected>Spike onto medium</option>
             <option value="replace">Replace medium</option>
           </select>
         </label>
-        <label class="field" id="ds_g_factor_field"><span>Spike factor <span class="unit">(&times; final)</span></span><input id="ds_g_factor" type="number" step="1" value="10"></label>
-        <label class="field"><span>Overage <span class="unit">(&times;, dead vol)</span></span><input id="ds_g_overage" type="number" step="0.05" value="1.1"></label>
+        <label class="field" id="ds_g_factor_field"><span>Spike factor <span class="unit">(&times; final)</span></span><input id="ds_g_factor" type="number" min="0" step="1" value="10"></label>
+        <label class="field"><span>Overage <span class="unit">(&times;, dead vol)</span></span><input id="ds_g_overage" type="number" min="0" step="0.05" value="1.1"></label>
       </div>
       <div class="btnrow" style="margin-top:8px">
         <button class="act" id="ds_commit_btn" onclick="commitDoseGroup()"><svg class="ic"><use href="#ic-check"/></svg>Add group</button>
@@ -564,9 +585,9 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
       <label class="field"><span>Concentration unit</span>
         <select id="ec_unit"><option value="1e-6">&micro;M</option><option value="1e-9">nM</option><option value="1e-3">mM</option><option value="1">M</option></select></label>
       <label class="field"><span>Path length <span class="unit">cm</span></span>
-        <input id="ec_path" type="number" value="1" step="0.1"></label>
+        <input id="ec_path" type="number" min="0" value="1" step="0.1"></label>
       <label class="field"><span>&lambda;max <span class="unit">nm</span></span>
-        <input id="ec_lmax" type="number" placeholder="e.g. 650"></label>
+        <input id="ec_lmax" type="number" min="0" step="any" placeholder="e.g. 650"></label>
     </div>
     <div class="speciesrow" style="grid-template-columns:24px 1fr 1fr 1fr 34px;font-size:11.5px;color:var(--faint);font-weight:500;margin-bottom:6px">
       <div>#</div><div>Concentration</div><div>A&#8322;&#8320;&#8320; (280&nbsp;nm)</div><div>A&#955;max</div><div></div>
@@ -586,10 +607,10 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
     <p class="desc">Save a new dye or payload to your library. It persists in this browser and appears in the table above and the UV/Vis payload selector. Use <strong>Compute &epsilon;</strong> above, then <strong>Fill from calculator</strong> to copy the fitted values in.</p>
     <div class="grid cols3">
       <label class="field"><span>Name</span><input id="nd_name" placeholder="e.g. MMAE-linker"></label>
-      <label class="field"><span>MW <span class="unit">g/mol</span></span><input id="nd_mw" type="number" placeholder="e.g. 1316"></label>
-      <label class="field"><span>&lambda;max <span class="unit">nm</span></span><input id="nd_lmax" type="number" placeholder="e.g. 650"></label>
-      <label class="field"><span>&epsilon;&lambda;max <span class="unit">M&#8315;&#185;cm&#8315;&#185;</span></span><input id="nd_elmax" type="number" placeholder="e.g. 240000"></label>
-      <label class="field"><span>&epsilon;280 <span class="unit">M&#8315;&#185;cm&#8315;&#185;</span></span><input id="nd_e280" type="number" placeholder="e.g. 9600"></label>
+      <label class="field"><span>MW <span class="unit">g/mol</span></span><input id="nd_mw" type="number" min="0" step="any" placeholder="e.g. 1316"></label>
+      <label class="field"><span>&lambda;max <span class="unit">nm</span></span><input id="nd_lmax" type="number" min="0" step="any" placeholder="e.g. 650"></label>
+      <label class="field"><span>&epsilon;&lambda;max <span class="unit">M&#8315;&#185;cm&#8315;&#185;</span></span><input id="nd_elmax" type="number" min="0" step="any" placeholder="e.g. 240000"></label>
+      <label class="field"><span>&epsilon;280 <span class="unit">M&#8315;&#185;cm&#8315;&#185;</span></span><input id="nd_e280" type="number" min="0" step="any" placeholder="e.g. 9600"></label>
       <label class="field"><span>CF@280 <span class="unit">auto</span></span><input id="nd_cf280" readonly placeholder="&epsilon;280 / &epsilon;&lambda;max"></label>
     </div>
     <label class="field"><span>Note <span class="unit">optional</span></span><input id="nd_comment" placeholder="e.g. vc-PAB-MMAE payload"></label>
@@ -1381,6 +1402,8 @@ const AB_PAYLOADS = [
 // stream (rather than a random scatter).
 const AB_SX = AB_SW + 18;                              // horizontal lattice pitch — wide spacing, sparse fleet
 const AB_SY = AB_SH + 9;                               // vertical lattice pitch
+const AB_VSTAG = 6;                                    // vertical zig-zag: odd columns drop by this many rows
+                                                       // → antibodies 1,3,5,7… ride a row above 2,4,6,8…
 function abFleet(cols, rows) {
   const ni = Math.ceil(cols / AB_SX) + 2;
   const nj = Math.ceil(rows / AB_SY) + 2;
@@ -1437,7 +1460,9 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
     // stagger alternate lattice rows by half a pitch for a natural (non-gridlocked) look
     const stag = (a.j % 2) * (AB_SX / 2);
     let bx = a.i * AB_SX + ox + stag - AB_SX;
-    let by = a.j * AB_SY + oy - AB_SY;
+    // vertical zig-zag: alternate COLUMNS sit a row-band apart, so consecutive
+    // antibodies across the stream (1,3,5,7 vs 2,4,6,8) ride on two offset rows.
+    let by = a.j * AB_SY + oy - AB_SY + (a.i % 2 ? AB_VSTAG : 0);
     if (mouse) {                                       // gentle cursor shove
       const cxp = bx + AB_SW / 2, cyp = by + AB_SH / 2;
       const dxm = cxp - mouse.x, dym = cyp - mouse.y, dist = Math.hypot(dxm, dym);
@@ -1475,7 +1500,7 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
       // per-star twinkle, offset within the cluster by its position so the
       // group shimmers as a loose unit rather than a single blinking blob.
       const tw = Math.sin(t * 2.4 + a.phase + p.g * 1.9 + (p.r + p.c) * 0.5);
-      put(bx + p.c, by + p.r, AB_PAYLOAD_GLYPH, tw > -0.4 ? "P" : "p");
+      put(bx + p.c, by + p.r + 1, AB_PAYLOAD_GLYPH, tw > -0.4 ? "P" : "p");
     }
   }
   return g;
@@ -1487,7 +1512,8 @@ function abFieldHtml(g) {
     const flush = () => {
       if (!run) return;
       s += k === "H" ? "<b>" + run + "</b>" : k === "L" ? "<i>" + run + "</i>"
-         : k === "P" ? "<u>" + run + "</u>" : k === "p" ? "<s>" + run + "</s>" : run;
+         : k === "P" ? Array.from(run, (ch) => "<u>" + ch + "</u>").join("")
+         : k === "p" ? Array.from(run, (ch) => "<s>" + ch + "</s>").join("") : run;
       run = "";
     };
     for (const cell of row) { if (cell.k !== k) { flush(); k = cell.k; } run += abEsc(cell.c); }
@@ -1517,7 +1543,7 @@ function startAntibodyArt() {
   // Round UP and add 3 columns so the field always overfills the element; the
   // surplus is clipped by overflow:hidden, guaranteeing edge-to-edge coverage.
   let cols = Math.max(30, Math.min(560, Math.ceil((el.clientWidth || 900) / chW) + 3));
-  let rows = AB_SH + 7;                                 // one molecule tall + margin for the scroll
+  let rows = AB_SH + 7 + AB_VSTAG;                      // one molecule tall + scroll margin + zig-zag band
   // Regular lattice sized to the field (see abFleet): evenly spaced, non-overlapping.
   _abFleet = abFleet(cols, rows);
   // Refit on resize so the field always spans the current window width (the art
@@ -1559,15 +1585,32 @@ const fmt = (x, d = 4) => (x === null || x === undefined || Number.isNaN(x))
   ? "&mdash;" : Number(x).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: 0 });
 function rrow(k, v, cls = "") { return `<div class="rrow ${cls}"><span class="k">${k}</span><span class="v">${v}</span></div>`; }
 function placeholder(msg) { return `<div class="placeholder">${msg}</div>`; }
+// A numeric result row that turns red when the value is negative (physically
+// implausible for a DAR, concentration, mass, or thiol count). Returns the row
+// HTML; callers OR together anyNeg to decide whether to append resNote().
+function nrow(k, value, unit, cls = "", digits = 3) {
+  const neg = typeof value === "number" && Number.isFinite(value) && value < 0;
+  const vcell = `<span class="v${neg ? " neg" : ""}">${fmt(value, digits)}${unit ? " " + unit : ""}</span>`;
+  return { html: `<div class="rrow ${cls}"><span class="k">${k}</span>${vcell}</div>`, neg };
+}
+function resNote(msg) { return `<div class="res-note">${msg}</div>`; }
 
 // ---- Theme toggle (default dark; choice persisted in localStorage) ----
 function currentTheme() {
   return document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
 }
 function syncThemeToggle() {
-  // Button offers the OTHER theme; label names where a click takes you.
-  const lbl = $("theme_toggle_label");
-  if (lbl) lbl.textContent = currentTheme() === "dark" ? "Light mode" : "Dark mode";
+  // Button offers the OTHER theme; icon + label name where a click takes you.
+  // In dark mode we show a sun (→ light); in light mode a moon (→ dark).
+  const toLight = currentTheme() === "dark";
+  const use = document.querySelector("#theme_toggle_icon use");
+  if (use) use.setAttribute("href", toLight ? "#ic-sun" : "#ic-moon");
+  const btn = $("theme_toggle");
+  if (btn) {
+    const lab = toLight ? "Switch to light mode" : "Switch to dark mode";
+    btn.setAttribute("aria-label", lab);
+    btn.setAttribute("title", lab);
+  }
   const mc = document.querySelector('meta[name="theme-color"]:not([media])')
     || document.querySelector('meta[name="theme-color"]');
   if (mc) mc.setAttribute("content", currentTheme() === "dark" ? "#16181c" : "#ffffff");
@@ -1649,16 +1692,23 @@ function calcUV() {
       ciRow = rrow("DAR 95% CI", `${fmt(u.ci95Low, 3)} &ndash; ${fmt(u.ci95High, 3)}`)
             + rrow("DAR relative &sigma;", u.relSigma === null ? "&mdash;" : fmt(100 * u.relSigma, 1) + "%");
     }
+    // Physical quantities that must be non-negative — flag any that aren't.
+    const darNeg = Number.isFinite(dar) && dar < 0;
+    const rMgml = nrow("[ADC]", p.concMgml, "mg/mL", "", 4);
+    const rUM = nrow("[ADC]", p.concUM, "&micro;M", "primary", 3);
+    const rUnk = nrow("[ADC] if payload &epsilon; unknown", cUnk, "mg/mL", "", 4);
+    const anyNeg = darNeg || rMgml.neg || rUM.neg || rUnk.neg;
     out.innerHTML = "<h3>Results</h3>"
-      + rrow("DAR (drug : antibody)", darCell, "primary")
+      + `<div class="rrow primary"><span class="k">DAR (drug : antibody)</span><span class="v${darNeg ? " neg" : ""}">${darCell}</span></div>`
       + ciRow
       + rrow("&epsilon;280 antibody (molar)", fmt(e280Mab, 0) + " M&#8315;&#185;cm&#8315;&#185;")
       + rrow("ADC MW", fmt(p.mwAdc, 1) + " g/mol")
       + rrow("&epsilon;280 ADC (molar)", fmt(p.eps280AdcMolar, 0) + " M&#8315;&#185;cm&#8315;&#185;")
       + rrow("&epsilon;280 ADC (mass)", fmt(p.eps280AdcMass, 4) + " (mg/mL&middot;cm)&#8315;&#185;")
-      + rrow("[ADC]", fmt(p.concMgml, 4) + " mg/mL")
-      + rrow("[ADC]", fmt(p.concUM, 3) + " &micro;M", "primary")
-      + rrow("[ADC] if payload &epsilon; unknown", fmt(cUnk, 4) + " mg/mL");
+      + rMgml.html
+      + rUM.html
+      + rUnk.html
+      + (anyNeg ? resNote("Negative result &mdash; check that A280 and A\u03bbmax aren't swapped, and that neither absorbance was baseline-subtracted below zero.") : "");
   } catch (e) { out.innerHTML = placeholder("Enter A280 and A\u03bbmax"); }
 }
 function uvPreset(kind) {
@@ -1695,11 +1745,11 @@ function reagentRowHTML(r = { name: "", equiv: "", basis: "mAb", stock_mM: "" })
   return `<div class="reagent-add reagent-row">
     <div class="grid cols3" style="margin-bottom:0">
       <label class="field" style="margin:0"><span>Reagent</span><input class="rg-name" value="${r.name}"></label>
-      <label class="field" style="margin:0"><span>Equivalents</span><input class="rg-eq" type="number" step="0.1" value="${r.equiv}"></label>
+      <label class="field" style="margin:0"><span>Equivalents</span><input class="rg-eq" type="number" min="0" step="0.1" value="${r.equiv}"></label>
       <label class="field" style="margin:0"><span>Basis</span><select class="rg-basis">
         <option value="mAb"${r.basis === "mAb" ? " selected" : ""}>per mAb</option>
         <option value="thiol"${r.basis === "thiol" ? " selected" : ""}>per free thiol</option></select></label>
-      <label class="field" style="margin:0"><span>Stock (mM)</span><input class="rg-stock" type="number" step="0.1" value="${r.stock_mM}"></label>
+      <label class="field" style="margin:0"><span>Stock (mM)</span><input class="rg-stock" type="number" min="0" step="0.1" value="${r.stock_mM}"></label>
     </div>
     <div class="btnrow" style="margin-top:8px"><button class="subtle" onclick="this.closest('.reagent-row').remove();calcConj()">Remove</button></div>
   </div>`;
@@ -1754,8 +1804,11 @@ function bindConj() {
 function calcEllman() {
   try {
     const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"));
-    $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Free thiols per antibody", fmt(t, 3), "primary")
-      + rrow("Interpretation", t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction");
+    const tNeg = Number.isFinite(t) && t < 0;
+    $("el_out").innerHTML = "<h3>Results</h3>"
+      + `<div class="rrow primary"><span class="k">Free thiols per antibody</span><span class="v${tNeg ? " neg" : ""}">${fmt(t, 3)}</span></div>`
+      + rrow("Interpretation", tNeg ? "&mdash;" : t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction")
+      + (tNeg ? resNote("Negative thiol count &mdash; check that A412 and A280 aren't swapped or baseline-subtracted below zero.") : "");
   } catch (e) { $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
 
@@ -1764,8 +1817,8 @@ let hicSpecies = [{ k: 0, a: 5 }, { k: 1, a: 15 }, { k: 2, a: 45 }, { k: 3, a: 2
 function renderHic() {
   $("hic_rows").innerHTML = hicSpecies.map((s, i) => `
     <div class="speciesrow">
-      <input type="number" value="${s.k}" onchange="hicSpecies[${i}].k=parseInt(this.value)||0;calcHic()" title="DAR value">
-      <input type="number" value="${s.a}" oninput="hicSpecies[${i}].a=parseFloat(this.value)||0;calcHic()" title="peak area">
+      <input type="number" min="0" step="any" value="${s.k}" onchange="hicSpecies[${i}].k=parseInt(this.value)||0;calcHic()" title="DAR value">
+      <input type="number" min="0" step="any" value="${s.a}" oninput="hicSpecies[${i}].a=parseFloat(this.value)||0;calcHic()" title="peak area">
       <button onclick="hicSpecies.splice(${i},1);renderHic();calcHic()">&times;</button>
     </div>`).join("");
 }
@@ -1802,8 +1855,8 @@ function setLcmsMode(m) {
 function chainBlock(title, arr, name) {
   return `<p class="sub" style="font-weight:600;margin-top:4px">${title}</p>` + arr.map((s, i) => `
     <div class="speciesrow">
-      <input type="number" value="${s.k}" onchange="${name}[${i}].k=parseInt(this.value)||0;calcLcms()" title="drugs">
-      <input type="number" value="${s.i}" oninput="${name}[${i}].i=parseFloat(this.value)||0;calcLcms()" title="intensity">
+      <input type="number" min="0" step="any" value="${s.k}" onchange="${name}[${i}].k=parseInt(this.value)||0;calcLcms()" title="drugs">
+      <input type="number" min="0" step="any" value="${s.i}" oninput="${name}[${i}].i=parseFloat(this.value)||0;calcLcms()" title="intensity">
       <button onclick="${name}.splice(${i},1);renderLcms();calcLcms()">&times;</button>
     </div>`).join("")
     + `<div class="btnrow"><button class="ghost" onclick="${name}.push({k:${name}.length,i:0});renderLcms();calcLcms()">+ ${title} species</button></div>`;
@@ -1850,15 +1903,17 @@ function calcYield() {
   const start = $("yl_start").value.trim(), target = $("yl_target").value.trim();
   const y = ADC.yieldAndFormulation(num("yl_conc"), num("yl_vol"), num("yl_mw"),
     start === "" ? null : parseFloat(start), target === "" ? null : parseFloat(target));
-  let html = "<h3>Results</h3>"
-    + rrow("Recovered mass", fmt(y.recoveredMassMg, 3) + " mg", "primary")
-    + rrow("Molar amount", fmt(y.molarAmountNmol, 2) + " nmol");
+  const rMass = nrow("Recovered mass", y.recoveredMassMg, "mg", "primary", 3);
+  const rMol = nrow("Molar amount", y.molarAmountNmol, "nmol", "", 2);
+  let html = "<h3>Results</h3>" + rMass.html + rMol.html;
+  let ylNeg = rMass.neg || rMol.neg;
   if (y.yieldPct !== null) html += rrow("Process yield", fmt(y.yieldPct, 1) + " %", "primary");
   if (y.vFinalML !== null) {
     html += rrow("Volume at target", fmt(y.vFinalML, 3) + " mL");
     html += rrow(y.vChangeML >= 0 ? "Diluent to add" : "Concentrate by",
       fmt(Math.abs(y.vChangeML), 3) + " mL");
   }
+  if (ylNeg) html += resNote("Negative result &mdash; check that concentration, volume, and MW are all positive.");
   $("yl_out").innerHTML = html;
 }
 
@@ -2005,6 +2060,11 @@ function renderDoseGrid() {
     g += `</tr>`;
   }
   g += `</tbody></table>`;
+  // Empty-state affordance: when nothing is painted or committed yet, overlay a
+  // dashed prompt so a first-time user sees the grid is interactive.
+  if (!dsState.groups.length && !dsState.pending.size) {
+    g += `<div class="ds-empty-prompt"><span>&#128072; Click and drag across wells to paint your first dose group</span></div>`;
+  }
   $("ds_grid").innerHTML = g;
 }
 
@@ -2679,9 +2739,9 @@ function renderEcRows() {
   $("ec_rows").innerHTML = ecRows.map((r, i) => `
     <div class="speciesrow" style="grid-template-columns:24px 1fr 1fr 1fr 34px">
       <span class="rownum">${i + 1}.</span>
-      <input type="number" value="${r.c}" placeholder="conc" oninput="ecRows[${i}].c=this.value">
-      <input type="number" value="${r.a280}" placeholder="A280" oninput="ecRows[${i}].a280=this.value">
-      <input type="number" value="${r.almax}" placeholder="A\u03bbmax" oninput="ecRows[${i}].almax=this.value">
+      <input type="number" min="0" step="any" value="${r.c}" placeholder="conc" oninput="ecRows[${i}].c=this.value">
+      <input type="number" min="0" step="any" value="${r.a280}" placeholder="A280" oninput="ecRows[${i}].a280=this.value">
+      <input type="number" min="0" step="any" value="${r.almax}" placeholder="A\u03bbmax" oninput="ecRows[${i}].almax=this.value">
       <button title="remove" onclick="removeEcRow(${i})">&times;</button>
     </div>`).join("");
 }
