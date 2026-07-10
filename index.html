@@ -240,6 +240,9 @@ table.dye tr.just-added>td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
   align-items:center;justify-content:center;font-size:11px;font-weight:600}
 .flow .arrow{color:var(--accent);font-weight:600}
 /* glossary */
+.glosshead{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);
+  margin:var(--s3) 0 4px;padding-bottom:4px;border-bottom:2px solid var(--accent-soft)}
+.glosshead:first-of-type{margin-top:var(--s1)}
 .gloss{display:grid;grid-template-columns:1fr 1fr;gap:2px var(--s3)}
 @media(max-width:760px){.gloss{grid-template-columns:1fr}}
 .gterm{padding:12px 0;border-bottom:1px solid var(--line)}
@@ -755,20 +758,56 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 <section class="panel" id="panel-definitions">
   <div class="card">
     <h2>Definitions &amp; terms</h2>
-    <p class="desc">Concise reference for the quantities and assays used throughout this calculator. Every formula named here is implemented once in the shared calculation core.</p>
+    <p class="desc">Concise reference for the quantities, assays, and design terms used throughout this calculator. Every formula named here is implemented once in the shared calculation core.</p>
+
+    <h3 class="glosshead">Core attribute</h3>
     <dl class="gloss">
       <div class="gterm"><dt>DAR <span class="abbr">drug : antibody</span></dt><dd>Drug-to-antibody ratio &mdash; the average number of payload molecules conjugated per antibody. The central critical quality attribute (CQA) of an ADC; measurable by UV/Vis, HIC, or LC-MS.</dd></div>
+    </dl>
+
+    <h3 class="glosshead">UV/Vis DAR</h3>
+    <dl class="gloss">
       <div class="gterm"><dt>&epsilon;280 <span class="abbr">M&#8315;&#185;cm&#8315;&#185;</span></dt><dd>Molar extinction coefficient at 280&nbsp;nm &mdash; how strongly a species absorbs UV light at 280&nbsp;nm. Antibody concentration is derived from A280 via Beer&ndash;Lambert once &epsilon;280 is known.</dd></div>
       <div class="gterm"><dt>&epsilon;&lambda;max <span class="abbr">M&#8315;&#185;cm&#8315;&#185;</span></dt><dd>Molar extinction coefficient of the payload at its absorbance maximum (&lambda;max). Combined with A&lambda;max, it isolates the payload signal from the antibody backbone.</dd></div>
       <div class="gterm"><dt>CF@280 <span class="abbr">correction factor</span></dt><dd>Ratio &epsilon;280&#8202;/&#8202;&epsilon;&lambda;max for a payload &mdash; the fraction of its &lambda;max absorptivity that also appears at 280&nbsp;nm. Used to subtract the payload's 280&nbsp;nm contribution when solving for DAR.</dd></div>
       <div class="gterm"><dt>A280 / A&lambda;max <span class="abbr">absorbance</span></dt><dd>Measured absorbance (AU) at 280&nbsp;nm and at the payload &lambda;max. Their ratio R&nbsp;=&nbsp;A&lambda;max&#8202;/&#8202;A280 drives the two-wavelength UV/Vis DAR deconvolution.</dd></div>
-      <div class="gterm"><dt>HIC <span class="abbr">chromatography</span></dt><dd>Hydrophobic-interaction chromatography &mdash; separates ADC species by drug load. Peak areas give the fraction at each integer DAR; the average DAR is the area-weighted mean.</dd></div>
+      <div class="gterm"><dt>Light-scattering correction <span class="abbr">turbidity</span></dt><dd>Aggregates and particulates scatter light, adding a sloping baseline that inflates both A280 and A&lambda;max. A Rayleigh-type baseline A(&lambda;)&nbsp;&prop;&nbsp;&lambda;<sup>&minus;p</sup> (default p&nbsp;=&nbsp;4) is fit from a reference wavelength where the sample does not absorb (e.g.&nbsp;320&ndash;340&nbsp;nm) and subtracted from each measured absorbance before the DAR deconvolution.</dd></div>
+      <div class="gterm"><dt>DAR uncertainty <span class="abbr">&plusmn;&sigma;</span></dt><dd>Propagated 1&sigma; error on the UV/Vis DAR from the measured absorbances <em>and</em> the four extinction coefficients (&epsilon;280 and &epsilon;&lambda;max for both antibody and payload). Reported as DAR&nbsp;&plusmn;&nbsp;&sigma; with a 95% confidence interval; the &epsilon;-coefficient terms typically dominate the budget.</dd></div>
+    </dl>
+
+    <h3 class="glosshead">HIC &amp; LC-MS</h3>
+    <dl class="gloss">
+      <div class="gterm"><dt>HIC <span class="abbr">chromatography</span></dt><dd>Hydrophobic-interaction chromatography &mdash; separates ADC species by drug load. Peak areas give the fraction at each integer DAR; the average DAR is the area-weighted mean. Because more-loaded species carry extra payload chromophore at 280&nbsp;nm, raw A280 peak areas are &epsilon;-corrected to molar abundance (each area divided by &epsilon;280&nbsp;+&nbsp;k&#183;&epsilon;280,payload) before averaging, so the mean is not biased high.</dd></div>
+      <div class="gterm"><dt>Load distribution <span class="abbr">DAR profile</span></dt><dd>The fraction of antibody at each integer drug load (DAR&nbsp;0, 1, 2&hellip;), not just the mean. The predictor models conjugation as site occupancy: each of <em>n</em> reactive sites is occupied with probability <em>p</em>, giving a binomial load profile with mean and variance the app reports alongside the bar chart.</dd></div>
+      <div class="gterm"><dt>Conjugation chemistry <span class="abbr">sites / ladder</span></dt><dd>The chemistry sets the drugs-per-site and the shape of the ladder. <b>Cysteine / TCEP</b> (interchain or engineered thiols): each reduced disulfide exposes a pair, so load climbs in <em>even</em> steps (DAR&nbsp;0, 2, 4&hellip;). <b>Lysine / amine</b>: many single amine sites react stochastically, giving a broad <em>every-integer</em> distribution.</dd></div>
       <div class="gterm"><dt>LC-MS reduced vs. intact</dt><dd>Mass spectrometry of drug load. <b>Reduced</b> (denaturing + reducing): light and heavy chains are measured separately and DAR&nbsp;=&nbsp;2&#183;mean&#8202;LC&nbsp;+&nbsp;2&#183;mean&#8202;HC. <b>Intact</b> (native): the whole ADC is measured and DAR is the intensity-weighted mean drug count.</dd></div>
+      <div class="gterm"><dt>Ionization-response correction</dt><dd>MS peak intensity is proportional to signal, not directly to moles &mdash; conjugated species often ionize differently from naked antibody. Dividing each species' intensity by its relative response factor (signal per mole, reference&nbsp;=&nbsp;1) converts intensities to molar abundances before the DAR average, removing the ionization bias.</dd></div>
+    </dl>
+
+    <h3 class="glosshead">Thiol chemistry &amp; conjugation</h3>
+    <dl class="gloss">
       <div class="gterm"><dt>Ellman free thiols</dt><dd>DTNB (Ellman's reagent) assay quantifying reduced cysteine &ndash;SH groups per antibody. Confirms the reduction state before maleimide conjugation; full IgG1 reduction exposes 8 interchain thiols.</dd></div>
+      <div class="gterm"><dt>Reagent-blank subtraction</dt><dd>DTNB, the TNB product, and residual reductant all absorb at 412&nbsp;nm and 280&nbsp;nm, biasing the raw free-thiol count. Subtracting a reagent-only blank from both channels before the ratio removes this background; with zero blanks the result reduces to the raw value.</dd></div>
+      <div class="gterm"><dt>Conjugation route</dt><dd>How payload is attached. <b>Cysteine &ndash; native disulfide</b> (partial reduction of interchain bonds), <b>Cysteine &ndash; rebridging</b> (reduce then re-span each disulfide with a bis-reactive linker), <b>Thiomab</b> (site-specific engineered cysteines), <b>Lysine</b> (amine acylation), and <b>MTGase / glycan</b> (enzymatic / glycan-remodeling). The route sets the number of attachment sites and the achievable DAR ladder.</dd></div>
       <div class="gterm"><dt>Equivalents &amp; basis</dt><dd>Reagent amount expressed as a multiple of a reference: <b>per mAb</b> (relative to moles of antibody) or <b>per free thiol</b> (relative to reactive thiols). Sets the stoichiometry of each addition in the conjugation plan.</dd></div>
+    </dl>
+
+    <h3 class="glosshead">Yield &amp; formulation</h3>
+    <dl class="gloss">
       <div class="gterm"><dt>Process yield</dt><dd>Recovered ADC mass as a percentage of starting antibody mass &mdash; how much material survived conjugation and purification. Paired with the formulation volume needed to reach a target concentration.</dd></div>
     </dl>
-    <div class="note"><b>One calculation core.</b> Each definition above corresponds to a function in <span style="font-family:var(--mono)">adc_core</span> (Python + JS + this page), pinned to shared golden values so the numbers never drift between platforms.</div>
+
+    <h3 class="glosshead">Dosing &amp; plate design</h3>
+    <dl class="gloss">
+      <div class="gterm"><dt>Dose group</dt><dd>One block of wells on the plate sharing a cell line, ADC, and dilution recipe. The <em>shape</em> of the painted selection drives the design: along the dose axis each well is a concentration point (dose decreasing), across the other axis wells are replicates. Several groups (different cell lines or ADCs) share one plate.</dd></div>
+      <div class="gterm"><dt>Fold-dilution series</dt><dd>A serial dilution where each point is a fixed fold lower than the previous: C_final,<em>i</em>&nbsp;=&nbsp;C_top&#8202;/&#8202;fold<sup>&thinsp;i</sup>. The fold and the number of points set the concentration range spanned across the dose axis.</dd></div>
+      <div class="gterm"><dt>Top / working / final concentration</dt><dd><b>Final</b> is the on-cell concentration in each well; <b>top</b> is the highest final point that starts the series. When dosing is a <em>spike</em> onto medium, the <b>working</b> (spike) stock is prepared at spike-factor&nbsp;&times;&nbsp;final so a small add reaches the final in-well concentration.</dd></div>
+      <div class="gterm"><dt>Spike vs. replace</dt><dd>Two dosing modes. <b>Spike</b> adds a small volume of concentrated ADC onto existing medium (V_add&nbsp;=&nbsp;V_well&#8202;/&#8202;(f&minus;1) for spike-factor f); <b>replace</b> swaps the medium for pre-diluted dosing solution. Spike minimizes disturbance; replace gives an exact medium composition.</dd></div>
+      <div class="gterm"><dt>Replicates &amp; overage</dt><dd><b>Replicates</b> are repeat wells per concentration point (across the non-dose axis). <b>Overage</b> is an excess factor (default 1.1&times;) on prepared volumes to cover pipetting dead-volume so no well runs short.</dd></div>
+      <div class="gterm"><dt>Bench sheet</dt><dd>The printable step-by-step recipe generated from the plate: per-group serial-dilution tubes, transfer volumes, and the well map. Everything a scientist carries to the bench to execute the design.</dd></div>
+    </dl>
+
+    <div class="note"><b>One calculation core.</b> Each quantitative definition above corresponds to a function in <span style="font-family:var(--mono)">adc_core</span> (Python + JS + this page), pinned to shared golden values so the numbers never drift between platforms.</div>
   </div>
 </section>
 
