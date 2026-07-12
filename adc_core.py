@@ -1282,6 +1282,69 @@ def get_dye(name: str) -> dict | None:
     return None
 
 
+# ==========================================================================
+# 10b. Physical-bounds guards  (spec §10b)
+# ==========================================================================
+# Plausibility limits. These are deliberately loose: the point is to catch
+# swapped inputs and sign errors that would otherwise flow silently into a
+# logged result, not to constrain legitimate edge cases. Standard and
+# site-specific ADCs sit well under DAR 16; an absorbance ratio above ~50
+# almost always means A280 and Aλmax were entered the wrong way round.
+DAR_MAX_PLAUSIBLE: float = 16.0
+R_MAX_PLAUSIBLE: float = 50.0
+
+
+def check_physical_bounds(
+    *,
+    dar: float | None = None,
+    r: float | None = None,
+    eps280: float | None = None,
+    eps_lmax: float | None = None,
+    concentrations: Mapping[str, float] | None = None,
+) -> list[dict]:
+    """Return physical-plausibility warnings for computed ADC quantities.
+
+    Each warning is ``{"code": str, "message": str}``. Pure and side-effect
+    free: callers pass only the quantities they have (``None`` is skipped) and
+    decide how to surface the result. This never raises for out-of-range
+    values -- its job is to flag nonsense the upstream math will otherwise
+    emit silently (a negative DAR from a below-blank absorbance, a swapped
+    pair of extinction coefficients), not to halt the calculation.
+    """
+    w: list[dict] = []
+    if dar is not None:
+        if dar < 0:
+            w.append({"code": "dar_negative",
+                      "message": f"DAR is negative ({dar:.3g}); check that Aλmax/A280 "
+                                 f"and the ε values are not swapped."})
+        elif dar > DAR_MAX_PLAUSIBLE:
+            w.append({"code": "dar_high",
+                      "message": f"DAR of {dar:.3g} is implausibly high (> {DAR_MAX_PLAUSIBLE:g}); "
+                                 f"typical ADCs are 2–8. Check ε values and absorbances."})
+    if r is not None:
+        if r < 0:
+            w.append({"code": "r_negative",
+                      "message": f"Absorbance ratio R = Aλmax/A280 is negative ({r:.3g}); "
+                                 f"a measured absorbance is below its blank."})
+        elif r > R_MAX_PLAUSIBLE:
+            w.append({"code": "r_high",
+                      "message": f"Absorbance ratio R = {r:.3g} is very high (> {R_MAX_PLAUSIBLE:g}); "
+                                 f"A280 and Aλmax may be swapped."})
+    if eps280 is not None and eps_lmax is not None:
+        if eps_lmax > 0 and eps280 > eps_lmax:
+            w.append({"code": "eps_inconsistent",
+                      "message": f"ε280 ({eps280:.4g}) exceeds ελmax ({eps_lmax:.4g}); λmax should be "
+                                 f"the absorbance maximum, so this suggests swapped or mislabeled "
+                                 f"coefficients."})
+    if concentrations:
+        for label, c in concentrations.items():
+            if c is not None and c < 0:
+                w.append({"code": "conc_negative",
+                          "message": f"{label} is negative ({c:.3g}); concentrations cannot be "
+                                     f"below zero."})
+    return w
+
+
 # ============================================================================
 # ADC registry: log each preparation / assay and aggregate across batches.
 #
