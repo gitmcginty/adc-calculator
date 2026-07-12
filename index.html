@@ -156,6 +156,19 @@ details.advanced[open]>summary{border-bottom:1px solid var(--line)}
 /* danger note inside a results panel — flags a physically implausible result */
 .res-note{border-left:2px solid var(--danger);background:var(--danger-soft);color:var(--danger);
   padding:10px 14px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.5;margin-top:var(--s2)}
+.res-warn{border-left:2px solid var(--warn);background:var(--warn-soft,color-mix(in srgb,var(--warn) 12%,transparent));
+  color:var(--warn);padding:9px 13px;border-radius:0 8px 8px 0;font-size:12px;line-height:1.5;margin-top:var(--s1)}
+.res-warn b{font-weight:600}.res-warn ul{margin:4px 0 0;padding-left:18px}.res-warn li{margin:2px 0}
+.selfcheck{margin:var(--s2) 0 0;padding:10px 14px;border-radius:8px;font-size:12.5px;line-height:1.5;
+  display:flex;align-items:flex-start;gap:9px;border:1px solid transparent}
+.selfcheck .sc-ic{flex:none;width:17px;height:17px;margin-top:1px}
+.selfcheck .sc-body{flex:1;min-width:0}
+.selfcheck b{font-weight:600}
+.selfcheck.ok{background:color-mix(in srgb,var(--ok) 10%,transparent);border-color:color-mix(in srgb,var(--ok) 35%,transparent);color:var(--ok)}
+.selfcheck.fail{background:var(--danger-soft);border-color:color-mix(in srgb,var(--danger) 45%,transparent);color:var(--danger)}
+.selfcheck ul{margin:5px 0 0;padding-left:18px}.selfcheck li{margin:2px 0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
+.folder-sync{margin:0 0 14px;padding:10px 12px;border:1px dashed var(--line);border-radius:8px;background:var(--panel)}
+.folder-sync .sub{margin:0}
 .rrow .v.neg{color:var(--danger)}
 .rrow.primary .v.neg{color:var(--danger)}
 .btnrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-top:var(--s1)}
@@ -317,6 +330,9 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
   <button data-tab="dosing" class="bench" title="Plan an in vitro dosing experiment"><svg class="ic"><use href="#ic-flask"/></svg>In Vitro Dosing</button>
 </nav>
 <main class="wrap">
+
+<!-- ============ Prominent on-load self-check ============ -->
+<div id="selfcheck_panel" class="selfcheck" role="status" aria-live="polite" hidden></div>
 
 <!-- ============ Global active-ADC identity bar ============ -->
 <div class="adcbar">
@@ -747,6 +763,14 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
     <div class="btnrow" style="margin-bottom:12px">
       <button class="act" onclick="exportRegistryCsv()">Export CSV</button>
       <button class="ghost danger" onclick="clearRegistry()">Clear all</button>
+    </div>
+
+    <div class="folder-sync">
+      <div class="btnrow" style="margin-bottom:6px">
+        <button class="ghost" id="folder_connect" onclick="connectFolder()"><svg class="ic"><use href="#ic-save"/></svg>Connect a folder</button>
+        <button class="ghost" id="folder_disconnect" onclick="disconnectFolder()" style="display:none">Disconnect</button>
+      </div>
+      <p class="sub" id="folder_status">Optional: auto-save a CSV + JSON copy of the registry to a local folder on every log.</p>
     </div>
 
     <div style="overflow-x:auto"><table class="dye" id="reg_table"></table></div>
@@ -1437,6 +1461,35 @@ function getDye(name) {
   return DYE_LIBRARY.find((d) => d.name.toLowerCase() === key) || null;
 }
 
+// ── Physical-bounds guards (spec §10b): mirrors adc_core.py / adc_core.js.
+//    Pure; returns [{code,message}]; never throws — flags nonsense the math
+//    would otherwise emit silently (negative DAR, swapped ε, sub-blank R). ──
+const DAR_MAX_PLAUSIBLE = 16.0;
+const R_MAX_PLAUSIBLE = 50.0;
+function _g3(x) {
+  return Number.isFinite(x) ? String(Number(x.toPrecision(x === Math.trunc(x) ? Math.max(1, String(Math.trunc(Math.abs(x))).length) : 3))) : String(x);
+}
+function checkPhysicalBounds({ dar = null, r = null, eps280 = null, epsLmax = null, concentrations = null } = {}) {
+  const w = [];
+  if (dar !== null && dar !== undefined) {
+    if (dar < 0) w.push({ code: "dar_negative", message: `DAR is negative (${_g3(dar)}); check that Aλmax/A280 and the ε values are not swapped.` });
+    else if (dar > DAR_MAX_PLAUSIBLE) w.push({ code: "dar_high", message: `DAR of ${_g3(dar)} is implausibly high (> ${DAR_MAX_PLAUSIBLE}); typical ADCs are 2–8. Check ε values and absorbances.` });
+  }
+  if (r !== null && r !== undefined) {
+    if (r < 0) w.push({ code: "r_negative", message: `Absorbance ratio R = Aλmax/A280 is negative (${_g3(r)}); a measured absorbance is below its blank.` });
+    else if (r > R_MAX_PLAUSIBLE) w.push({ code: "r_high", message: `Absorbance ratio R = ${_g3(r)} is very high (> ${R_MAX_PLAUSIBLE}); A280 and Aλmax may be swapped.` });
+  }
+  if (eps280 !== null && eps280 !== undefined && epsLmax !== null && epsLmax !== undefined) {
+    if (epsLmax > 0 && eps280 > epsLmax) w.push({ code: "eps_inconsistent", message: `ε280 (${_g3(eps280)}) exceeds ελmax (${_g3(epsLmax)}); λmax should be the absorbance maximum, so this suggests swapped or mislabeled coefficients.` });
+  }
+  if (concentrations) {
+    for (const [label, c] of Object.entries(concentrations)) {
+      if (c !== null && c !== undefined && c < 0) w.push({ code: "conc_negative", message: `${label} is negative (${_g3(c)}); concentrations cannot be below zero.` });
+    }
+  }
+  return w;
+}
+
 // ── ADC registry (pure): mirrors adc_core.py make_registry_record /
 //    registry_to_csv / summarize_registry. Persistence lives in the UI layer.
 const REGISTRY_FIELDS = ["id","date","operator","assay","route","dar","conc_mgml","conc_uM","free_thiols","notes"];
@@ -1484,15 +1537,16 @@ function summarizeRegistry(records){
 // ── Self-check: same golden values as the Python test suite ────────────────
 function selfCheck() {
   const REL = 1e-6;
+  const results = [];
   const ok = (got, want, label) => {
     const rel = want === 0 ? Math.abs(got) : Math.abs(got - want) / Math.abs(want);
-    if (rel > REL) throw new Error(`FAIL ${label}: got ${got}, want ${want}`);
-    return `PASS ${label}`;
+    return rel > REL ? `FAIL ${label}: got ${got}, want ${want}` : `PASS ${label}`;
   };
+  const chk = (got, want, label) => { const s = ok(got, want, label); if (s[0] === "F") results.push(s); };
+  const must = (failCond, label) => { if (failCond) results.push("FAIL " + label); };
   const MW_MAB = 145000.0, EPS280_MAB = 203000.0, A280 = 7.4315, A_LMAX = 0.7827;
   const MW_LP = 1559.62, EPS280_LP = 7287.0, EPS_LMAX_LP = 9624.0;
   const R = A_LMAX / A280;
-  const results = [];
   results.push(ok(epsMassToMolar(1.4, MW_MAB), 203000.0, "eps conv"));
   results.push(ok(darUV(A280, A_LMAX, EPS280_MAB, R * EPS280_MAB, EPS280_LP, EPS_LMAX_LP), 0.0, "DAR case A"));
   const darB = darUV(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP);
@@ -1535,15 +1589,15 @@ function selfCheck() {
   const CONC=[1e-6,2e-6,3e-6,4e-6,5e-6];
   const AB280=CONC.map((c)=>0.01+50000.0*c);
   const fit=linearRegression(CONC,AB280);
-  ok(fit.slope,50000.0,"linreg slope"); ok(fit.intercept,0.01,"linreg intercept"); ok(fit.rSquared,1.0,"linreg r2");
-  ok(extinctionCoefficient(CONC,AB280,1.0).eps,50000.0,"eps L=1");
-  ok(extinctionCoefficient(CONC,AB280,0.5).eps,100000.0,"eps L=0.5");
+  chk(fit.slope,50000.0,"linreg slope"); chk(fit.intercept,0.01,"linreg intercept"); chk(fit.rSquared,1.0,"linreg r2");
+  chk(extinctionCoefficient(CONC,AB280,1.0).eps,50000.0,"eps L=1");
+  chk(extinctionCoefficient(CONC,AB280,0.5).eps,100000.0,"eps L=0.5");
   results.push("PASS extinction coefficient (regression)");
   const uu=darUVUncertainty(A280,A_LMAX,EPS280_MAB,0.0,EPS280_LP,EPS_LMAX_LP,0.01,0.01);
-  ok(uu.dar,2.4140809554780795,"DAR unc point"); ok(uu.sigmaDar,0.03370113601940267,"DAR unc sigma");
+  chk(uu.dar,2.4140809554780795,"DAR unc point"); chk(uu.sigmaDar,0.03370113601940267,"DAR unc sigma");
   const uue=darUVUncertainty(A280,A_LMAX,EPS280_MAB,0.0,EPS280_LP,EPS_LMAX_LP,0.01,0.01,2030.0,0.0,364.35,481.2);
-  ok(uue.sigmaDar,0.13795625467477654,"DAR unc sigma (with eps terms)");
-  ok(distributionDispersion({0:5,1:15,2:45,3:25,4:10}).sd,0.9797958971132712,"HIC dispersion sd");
+  chk(uue.sigmaDar,0.13795625467477654,"DAR unc sigma (with eps terms)");
+  chk(distributionDispersion({0:5,1:15,2:45,3:25,4:10}).sd,0.9797958971132712,"HIC dispersion sd");
   const pd = predictDarDistribution(4, { feedRatio: 2.5, efficiency: 0.8 });
   results.push(ok(pd.pSite, 0.25, "DAR dist p_site (cys)"));
   results.push(ok(pd.meanDar, 2.0, "DAR dist mean (cys)"));
@@ -1555,46 +1609,55 @@ function selfCheck() {
   const pdLys = predictDarDistribution(8, { pSite: 0.5, drugsPerSite: 1 });
   results.push(ok(pdLys.meanDar, 4.0, "DAR dist lysine mean"));
   results.push(ok(pdLys.distribution[3], 0.21875, "DAR dist lysine P(DAR=3)"));
-  ok(darLcmsReducedUncertainty({0:10,1:90},{0:5,1:20,2:75}).sigmaDar,0.8944271909999159,"LC-MS reduced sigma");
+  chk(darLcmsReducedUncertainty({0:10,1:90},{0:5,1:20,2:75}).sigmaDar,0.8944271909999159,"LC-MS reduced sigma");
   results.push("PASS uncertainty (UV / HIC / LC-MS)");
   const dp = planSerialDilution({ stockUM: 1000, topUM: 10, fold: 4, nPoints: 4,
     replicates: 3, wellVolumeUL: 100.0, doseMode: "spike", doseFactor: 10.0, overage: 1.0 });
-  ok(dp.finalConcsUM[3], 0.15625, "dosing final conc[3]");
-  ok(dp.workingConcsUM[0], 100.0, "dosing working conc[0]");
-  ok(dp.vAddPerWellUL, 100.0 / 9.0, "dosing spike volume");
-  ok(dp.vUsePerTubeUL, 100.0 / 3.0, "dosing dispense per tube");
-  ok(dp.vTransferUL, 100.0 / 9.0, "dosing transfer volume");
-  ok(dp.totalStockUL, 4.444444444444444, "dosing tube-1 stock");
-  ok(dp.totalWells, 12, "dosing total wells");
-  ok(plateWellVolume("96"), 100.0, "plate 96 well volume");
+  chk(dp.finalConcsUM[3], 0.15625, "dosing final conc[3]");
+  chk(dp.workingConcsUM[0], 100.0, "dosing working conc[0]");
+  chk(dp.vAddPerWellUL, 100.0 / 9.0, "dosing spike volume");
+  chk(dp.vUsePerTubeUL, 100.0 / 3.0, "dosing dispense per tube");
+  chk(dp.vTransferUL, 100.0 / 9.0, "dosing transfer volume");
+  chk(dp.totalStockUL, 4.444444444444444, "dosing tube-1 stock");
+  chk(dp.totalWells, 12, "dosing total wells");
+  chk(plateWellVolume("96"), 100.0, "plate 96 well volume");
   const dpr = planSerialDilution({ stockUM: 500, topUM: 50, fold: 2, nPoints: 6,
     replicates: 4, wellVolumeUL: 200.0, doseMode: "replace", overage: 1.0 });
-  ok(dpr.workingConcsUM[0], 50.0, "replace working==final");
-  ok(dpr.vAddPerWellUL, 200.0, "replace add == well volume");
+  chk(dpr.workingConcsUM[0], 50.0, "replace working==final");
+  chk(dpr.vAddPerWellUL, 200.0, "replace add == well volume");
   results.push("PASS in vitro dosing (serial dilution)");
   const pm = plateMap([10, 3.333, 1.111, 0.37], 3, "96", "by_column");
-  if (pm.orientation !== "by_column" || pm.used !== 12) throw new Error("plate map layout");
-  if (pm.wells[0].rowLabel + pm.wells[0].colLabel !== "A1") throw new Error("plate map A1");
-  if (pm.wells[1].rowLabel + pm.wells[1].colLabel !== "B1") throw new Error("plate map B1 replicate");
-  if (pm.wells[3].rowLabel + pm.wells[3].colLabel !== "A2") throw new Error("plate map A2 next dose");
-  if (rowLabel(26) !== "AA") throw new Error("row label AA");
+  must(pm.orientation !== "by_column" || pm.used !== 12, "plate map layout");
+  must(pm.wells[0].rowLabel + pm.wells[0].colLabel !== "A1", "plate map A1");
+  must(pm.wells[1].rowLabel + pm.wells[1].colLabel !== "B1", "plate map B1 replicate");
+  must(pm.wells[3].rowLabel + pm.wells[3].colLabel !== "A2", "plate map A2 next dose");
+  must(rowLabel(26) !== "AA", "row label AA");
   const pmSeq = plateMap([1,2,3,4,5,6,7,8,9,10,11,12,13,14], 3, "96", "by_column");
-  if (pmSeq.orientation !== "sequential" || pmSeq.warnings.length === 0) throw new Error("plate map fallback");
+  must(pmSeq.orientation !== "sequential" || pmSeq.warnings.length === 0, "plate map fallback");
   results.push("PASS plate map (layout + labels)");
-  if (convertConcentration(5, "uM", "nM") !== 5000) throw new Error("unit uM->nM");
-  if (convertConcentration(250, "nM", "uM") !== 0.25) throw new Error("unit nM->uM");
+  must(convertConcentration(5, "uM", "nM") !== 5000, "unit uM->nM");
+  must(convertConcentration(250, "nM", "uM") !== 0.25, "unit nM->uM");
   const [ssp, ssr] = seriesShapeFromSelection(3, 4, "by_row");
-  if (ssp !== 3 || ssr !== 4) throw new Error("series shape by_row");
+  must(ssp !== 3 || ssr !== 4, "series shape by_row");
   const selCells = [];
   for (let r = 2; r < 6; r++) for (let c = 5; c < 8; c++) selCells.push([r, c]);
   const asg = assignSelection(selCells, [10, 2.5, 0.625, 0.15625], "by_row");
-  if (!asg.rectangular || asg.rows !== 4 || asg.cols !== 3) throw new Error("selection bbox");
+  must(!asg.rectangular || asg.rows !== 4 || asg.cols !== 3, "selection bbox");
   const wTop = asg.wells.find((w) => w.row === 2 && w.col === 5);
   const wBot = asg.wells.find((w) => w.row === 5 && w.col === 5);
-  if (wTop.point !== 0 || wTop.finalConcUM !== 10) throw new Error("selection top dose");
-  if (wBot.point !== 3 || wBot.finalConcUM !== 0.15625) throw new Error("selection bottom dose");
+  must(wTop.point !== 0 || wTop.finalConcUM !== 10, "selection top dose");
+  must(wBot.point !== 3 || wBot.finalConcUM !== 0.15625, "selection bottom dose");
   results.push("PASS units + selection assignment");
-  if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
+  // physical-bounds guards (spec §10b)
+  must(checkPhysicalBounds({ dar: 2.5, r: 0.1, eps280: 203000, epsLmax: 210000, concentrations: { c: 5 } }).length !== 0, "bounds: clean case flagged");
+  must(checkPhysicalBounds({ dar: -1.2 })[0].code !== "dar_negative", "bounds: dar_negative");
+  must(checkPhysicalBounds({ dar: 20 })[0].code !== "dar_high", "bounds: dar_high");
+  must(checkPhysicalBounds({ r: -0.5 })[0].code !== "r_negative", "bounds: r_negative");
+  must(checkPhysicalBounds({ r: 60 })[0].code !== "r_high", "bounds: r_high");
+  must(checkPhysicalBounds({ eps280: 203000, epsLmax: 5000 })[0].code !== "eps_inconsistent", "bounds: eps_inconsistent");
+  must(checkPhysicalBounds({ concentrations: { "mAb conc": -3 } })[0].code !== "conc_negative", "bounds: conc_negative");
+  results.push("PASS physical-bounds guards");
+  must(DYE_LIBRARY.length !== 22, "dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;
 }
@@ -1618,6 +1681,7 @@ const ADC = {
   darUVUncertainty, distributionDispersion, darLcmsReducedUncertainty,
   predictDarDistribution,
   getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
+  checkPhysicalBounds, DAR_MAX_PLAUSIBLE, R_MAX_PLAUSIBLE,
   makeRegistryRecord, registryToCsv, summarizeRegistry, REGISTRY_FIELDS,
 };
 
@@ -1907,6 +1971,15 @@ function nrow(k, value, unit, cls = "", digits = 3) {
   return { html: `<div class="rrow ${cls}"><span class="k">${k}</span>${vcell}</div>`, neg };
 }
 function resNote(msg) { return `<div class="res-note">${msg}</div>`; }
+/* Render physical-bounds warnings from ADC.checkPhysicalBounds() as an amber
+ * advisory block. Messages come from the pure core (fixed strings, no user
+ * input) but are escaped defensively. Returns "" when there is nothing to flag. */
+function boundsNotes(warnings) {
+  if (!warnings || !warnings.length) return "";
+  const items = warnings.map((w) => `<li>${escHtml(w.message)}</li>`).join("");
+  const label = warnings.length === 1 ? "Physical-bounds check" : `Physical-bounds checks (${warnings.length})`;
+  return `<div class="res-warn"><b>&#9888; ${label}</b><ul>${items}</ul></div>`;
+}
 
 // ---- Theme toggle (default dark; choice persisted in localStorage) ----
 function currentTheme() {
@@ -2025,6 +2098,10 @@ function calcUV() {
     const rUM = nrow("[ADC]", p.concUM, "&micro;M", "primary", 3);
     const rUnk = nrow("[ADC] if payload &epsilon; unknown", cUnk, "mg/mL", "", 4);
     const anyNeg = darNeg || rMgml.neg || rUM.neg || rUnk.neg;
+    const boundsW = ADC.checkPhysicalBounds({
+      dar: dar, r: almax / a280, eps280: e280Mab, epsLmax: elmaxMab,
+      concentrations: { "[ADC] (mg/mL)": p.concMgml, "[ADC] (\u00b5M)": p.concUM }
+    });
     out.innerHTML = "<h3>Results</h3>"
       + `<div class="rrow primary"><span class="k">DAR (drug : antibody)</span><span class="v${darNeg ? " neg" : ""}">${darCell}</span></div>`
       + ciRow
@@ -2036,7 +2113,8 @@ function calcUV() {
       + rMgml.html
       + rUM.html
       + rUnk.html
-      + (anyNeg ? resNote("Negative result &mdash; check that A280 and A\u03bbmax aren't swapped, and that neither absorbance was baseline-subtracted below zero.") : "");
+      + (anyNeg ? resNote("Negative result &mdash; check that A280 and A\u03bbmax aren't swapped, and that neither absorbance was baseline-subtracted below zero.") : "")
+      + boundsNotes(boundsW);
   } catch (e) { out.innerHTML = placeholder("Enter A280 and A\u03bbmax"); }
 }
 function uvPreset(kind) {
@@ -2135,11 +2213,13 @@ function calcEllman() {
     const t = ADC.ellmanFreeThiols(num("el_a412"), num("el_a280"), num("el_e280"), num("el_e412"), b412, b280);
     const tNeg = Number.isFinite(t) && t < 0;
     const blanked = b412 > 0 || b280 > 0;
+    const boundsW = ADC.checkPhysicalBounds({ concentrations: { "Free thiols per antibody": t } });
     $("el_out").innerHTML = "<h3>Results</h3>"
       + `<div class="rrow primary"><span class="k">Free thiols per antibody</span><span class="v${tNeg ? " neg" : ""}">${fmt(t, 3)}</span></div>`
       + rrow("Interpretation", tNeg ? "&mdash;" : t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction")
       + (blanked ? rrow("Blank-subtracted", "A412 &minus;" + fmt(b412, 4) + ", A280 &minus;" + fmt(b280, 4)) : "")
-      + (tNeg ? resNote("Negative thiol count &mdash; check that A412 and A280 aren't swapped or baseline-subtracted below zero.") : "");
+      + (tNeg ? resNote("Negative thiol count &mdash; check that A412 and A280 aren't swapped or baseline-subtracted below zero.") : "")
+      + boundsNotes(boundsW);
   } catch (e) { $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
 
@@ -2307,6 +2387,10 @@ function calcYield() {
       fmt(Math.abs(y.vChangeML), 3) + " mL");
   }
   if (ylNeg) html += resNote("Negative result &mdash; check that concentration, volume, and MW are all positive.");
+  const boundsW = ADC.checkPhysicalBounds({ concentrations: {
+    "Recovered mass (mg)": y.recoveredMassMg, "Molar amount (nmol)": y.molarAmountNmol
+  } });
+  html += boundsNotes(boundsW);
   $("yl_out").innerHTML = html;
 }
 
@@ -2936,6 +3020,185 @@ function csvField(s) { s = String(s || ""); return /[",\n\r]/.test(s) ? '"' + s.
 // ---- Save / load a whole plate design (#8) ----
 // A design captures the plate-level settings plus every group. Groups store
 // cells as [[r,c],...]; cellSet is rebuilt on load (Sets don't survive JSON).
+/* ================= Persistent storage layer =================
+   IndexedDB is the primary store (larger quota, structured values, survives
+   more aggressively than localStorage). localStorage is kept as a mirror/fallback
+   for browsers without IndexedDB (or private-mode failures) AND so the pre-paint
+   theme read in <head> stays synchronous. On first load, any key that exists only
+   in localStorage is migrated into IndexedDB exactly once.
+
+   Store.getItem/setItem mirror the localStorage string API (JSON strings in/out),
+   so the existing load / persist functions need only swap the backing call.
+   Store.getRaw/setRaw/delRaw persist structured-cloneable values directly — used
+   for the File System Access directory handle, which cannot be stringified. */
+const Store = (function () {
+  const DB_NAME = "adc_calculator", DB_VERSION = 1, STORE = "kv";
+  let _db = null, _ok = null; // _ok: null=untried, true=IDB available, false=fallback
+  function openDB() {
+    return new Promise((resolve) => {
+      if (_ok === false) return resolve(null);
+      if (_db) return resolve(_db);
+      let req;
+      try {
+        if (typeof indexedDB === "undefined" || !indexedDB) { _ok = false; return resolve(null); }
+        req = indexedDB.open(DB_NAME, DB_VERSION);
+      } catch (e) { _ok = false; return resolve(null); }
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = () => { _db = req.result; _ok = true; resolve(_db); };
+      req.onerror = () => { _ok = false; resolve(null); };
+      req.onblocked = () => { _ok = false; resolve(null); };
+    });
+  }
+  function getRaw(key) {
+    return openDB().then((db) => {
+      if (!db) return undefined;
+      return new Promise((resolve) => {
+        try {
+          const rq = db.transaction(STORE, "readonly").objectStore(STORE).get(key);
+          rq.onsuccess = () => resolve(rq.result);
+          rq.onerror = () => resolve(undefined);
+        } catch (e) { resolve(undefined); }
+      });
+    });
+  }
+  function setRaw(key, val) {
+    return openDB().then((db) => {
+      if (!db) return false;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(STORE, "readwrite");
+          tx.objectStore(STORE).put(val, key);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+          tx.onabort = () => resolve(false);
+        } catch (e) { resolve(false); }
+      });
+    });
+  }
+  function delRaw(key) {
+    return openDB().then((db) => {
+      if (!db) return false;
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(STORE, "readwrite");
+          tx.objectStore(STORE).delete(key);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) { resolve(false); }
+      });
+    });
+  }
+  // String API mirroring localStorage, with one-time migration from localStorage.
+  async function getItem(key) {
+    const v = await getRaw(key);
+    if (typeof v === "string") return v;
+    // Not in IndexedDB yet — migrate from localStorage if present (one-time).
+    let ls = null;
+    try { ls = localStorage.getItem(key); } catch (e) {}
+    if (ls != null) { await setRaw(key, ls); return ls; }
+    return null;
+  }
+  async function setItem(key, val) {
+    const ok = await setRaw(key, val);
+    // Best-effort mirror to localStorage: keeps a fallback copy and lets the
+    // synchronous pre-paint theme read stay authoritative. Quota errors ignored.
+    try { localStorage.setItem(key, val); } catch (e) {}
+    return ok;
+  }
+  function status() { return _ok === false ? "localStorage" : (_ok === true ? "IndexedDB" : "pending"); }
+  return { getItem, setItem, getRaw, setRaw, delRaw, openDB, status };
+})();
+
+/* ---- File System Access: "connect a folder" + autosave-on-log ----
+   When the browser supports the File System Access API, the user can connect a
+   local folder; the registry is then written there (CSV + JSON) automatically
+   every time a record is logged. The directory handle is persisted in IndexedDB
+   so the connection is remembered across sessions (re-prompting only for the
+   permission grant). Browsers without the API (Firefox, Safari) simply never
+   show the control — localStorage/IndexedDB persistence is unaffected. */
+const FolderSync = (function () {
+  const HANDLE_KEY = "adc_folder_handle_v1";
+  let _handle = null;
+  const supported = typeof window !== "undefined" && typeof window.showDirectoryPicker === "function";
+  async function ensurePermission(request) {
+    if (!_handle || typeof _handle.queryPermission !== "function") return !!_handle;
+    const opts = { mode: "readwrite" };
+    try {
+      if ((await _handle.queryPermission(opts)) === "granted") return true;
+      if (request && (await _handle.requestPermission(opts)) === "granted") return true;
+    } catch (e) {}
+    return false;
+  }
+  async function writeFile(name, contents) {
+    if (!_handle) return false;
+    if (!(await ensurePermission(false))) return false;
+    try {
+      const fh = await _handle.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(contents);
+      await w.close();
+      return true;
+    } catch (e) { return false; }
+  }
+  async function autosave() {
+    if (!_handle || typeof ADC === "undefined") return false;
+    const okCsv = await writeFile("adc_registry.csv", ADC.registryToCsv(registry));
+    await writeFile("adc_registry.json", JSON.stringify(registry, null, 2));
+    return okCsv;
+  }
+  async function connect() {
+    if (!supported) return false;
+    let h;
+    try { h = await window.showDirectoryPicker({ mode: "readwrite", id: "adc-registry" }); }
+    catch (e) { return false; } // user cancelled the picker
+    _handle = h;
+    await Store.setRaw(HANDLE_KEY, h);
+    if (!(await ensurePermission(true))) { _handle = null; await Store.delRaw(HANDLE_KEY); updateFolderUI(); return false; }
+    updateFolderUI();
+    await autosave(); // write an initial copy immediately
+    return true;
+  }
+  async function restore() {
+    if (!supported) return;
+    const h = await Store.getRaw(HANDLE_KEY);
+    if (h && typeof h.getFileHandle === "function") { _handle = h; }
+    updateFolderUI();
+  }
+  async function disconnect() {
+    _handle = null;
+    await Store.delRaw(HANDLE_KEY);
+    updateFolderUI();
+  }
+  return { connect, restore, disconnect, autosave, supported,
+    connected: () => !!_handle, name: () => (_handle ? _handle.name : null) };
+})();
+
+// Reflect folder-connection state into the registry panel controls.
+function updateFolderUI() {
+  const btn = $("folder_connect"), lbl = $("folder_status"), dis = $("folder_disconnect");
+  if (!btn) return;
+  if (!FolderSync.supported) {
+    btn.style.display = "none";
+    if (lbl) lbl.textContent = "Auto-save to a folder isn't available in this browser (needs Chrome/Edge).";
+    if (dis) dis.style.display = "none";
+    return;
+  }
+  if (FolderSync.connected()) {
+    btn.textContent = "Change folder";
+    if (lbl) { lbl.innerHTML = "Auto-saving the registry to <b>" + escHtml(FolderSync.name()) + "</b> on every log."; lbl.style.color = "var(--ok)"; }
+    if (dis) dis.style.display = "";
+  } else {
+    btn.textContent = "Connect a folder";
+    if (lbl) { lbl.textContent = "Optional: auto-save a CSV + JSON copy of the registry to a local folder on every log."; lbl.style.color = ""; }
+    if (dis) dis.style.display = "none";
+  }
+}
+async function connectFolder() { await FolderSync.connect(); }
+async function disconnectFolder() { await FolderSync.disconnect(); }
+
 const DESIGN_KEY = "adc_plate_designs_v1";
 const DESIGN_FORMAT = "adc-plate-design/1";
 
@@ -2987,15 +3250,22 @@ function applyDesign(d) {
   return true;
 }
 
-function loadDesignStore() {
+// In-memory cache of the saved-design map. Hydrated once (async) at init from
+// Store; the sync accessors below read/write this cache so the existing call
+// sites stay synchronous, and each write is persisted fire-and-forget.
+let _designStore = {};
+async function hydrateDesignStore() {
+  let raw;
+  try { raw = await Store.getItem(DESIGN_KEY); } catch (e) { raw = null; }
   try {
-    const o = JSON.parse(localStorage.getItem(DESIGN_KEY) || "{}");
-    return (o && typeof o === "object") ? o : {};
-  } catch (e) { return {}; }
+    const o = JSON.parse(raw || "{}");
+    _designStore = (o && typeof o === "object" && !Array.isArray(o)) ? o : {};
+  } catch (e) { _designStore = {}; }
 }
+function loadDesignStore() { return _designStore; }
 function persistDesignStore(store) {
-  try { localStorage.setItem(DESIGN_KEY, JSON.stringify(store)); }
-  catch (e) { alert("Could not save to browser storage: " + e.message); }
+  _designStore = store;
+  Store.setItem(DESIGN_KEY, JSON.stringify(store)).catch(() => {});
 }
 function renderDesignList() {
   const store = loadDesignStore();
@@ -3062,14 +3332,15 @@ let dyeSort = { key: "lmax", dir: 1 };
 // only at render/selection time.
 const USER_DYE_KEY = "adc_user_dyes_v1";
 let userDyes = [];
-function loadUserDyes() {
-  try { userDyes = JSON.parse(localStorage.getItem(USER_DYE_KEY) || "[]"); }
+async function loadUserDyes() {
+  let raw;
+  try { raw = await Store.getItem(USER_DYE_KEY); } catch (e) { raw = null; }
+  try { userDyes = JSON.parse(raw || "[]"); }
   catch (e) { userDyes = []; }
   if (!Array.isArray(userDyes)) userDyes = [];
 }
 function persistUserDyes() {
-  try { localStorage.setItem(USER_DYE_KEY, JSON.stringify(userDyes)); }
-  catch (e) { alert("Could not save to browser storage: " + e.message); }
+  Store.setItem(USER_DYE_KEY, JSON.stringify(userDyes)).catch(() => {});
 }
 // Merged view: built-ins (read-only) first, then user dyes (deletable).
 function allDyes() {
@@ -3316,14 +3587,17 @@ function addUserDye() {
 // go through the pure core (ADC.makeRegistryRecord / registryToCsv / summarizeRegistry).
 const REG_KEY = "adc_registry_v1";
 let registry = [];
-function loadRegistry() {
-  try { registry = JSON.parse(localStorage.getItem(REG_KEY) || "[]"); }
+async function loadRegistry() {
+  let raw;
+  try { raw = await Store.getItem(REG_KEY); } catch (e) { raw = null; }
+  try { registry = JSON.parse(raw || "[]"); }
   catch (e) { registry = []; }
   if (!Array.isArray(registry)) registry = [];
 }
 function persistRegistry() {
-  try { localStorage.setItem(REG_KEY, JSON.stringify(registry)); }
-  catch (e) { alert("Could not save to browser storage: " + e.message); }
+  // Fire-and-forget: IndexedDB (mirrored to localStorage) via Store; the in-memory
+  // `registry` array is the source of truth for the current session.
+  Store.setItem(REG_KEY, JSON.stringify(registry)).catch(() => {});
 }
 // Recompute the key numbers for a panel from the CORE (never scrape the DOM text).
 function capturePanel(panel) {
@@ -3385,6 +3659,13 @@ function logToRegistry(panel) {
   if (msg) { msg.textContent = "logged as " + id; msg.style.color = "var(--accent)";
     setTimeout(() => { msg.textContent = ""; }, 4000); }
   if (!idRaw) $("adc_id").value = id;
+  // If a folder is connected, mirror the registry to disk immediately.
+  if (FolderSync.connected()) {
+    FolderSync.autosave().then((ok) => {
+      if (msg && ok) { msg.textContent = "logged as " + id + " \u2014 saved to folder";
+        setTimeout(() => { msg.textContent = ""; }, 4000); }
+    }).catch(() => {});
+  }
 }
 // Inline rename from the registry table. One ADC ID ties multiple assays
 // together, so offer to rename every record sharing the old ID.
@@ -3483,9 +3764,11 @@ function initBindings() {
   $("cj_route").onchange = () => conjPreset($("cj_route").value);
   $("nd_e280").oninput = updateCF; $("nd_elmax").oninput = updateCF;
 }
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   syncThemeToggle();
-  loadUserDyes();
+  // Async storage hydration (IndexedDB, with one-time localStorage migration).
+  // Renders below run after the data is in memory so the UI is never briefly empty.
+  await loadUserDyes();
   populateDyeSelect();
   initBindings();
   conjPreset("thiomab");
@@ -3499,20 +3782,59 @@ window.addEventListener("DOMContentLoaded", () => {
   calcUV(); calcEllman(); calcYield();
   $("ds_well").value = ADC.plateWellVolume(dsPlate());
   dsGroupModeChange(); dsUnitChange(); calcDosing();
+  await hydrateDesignStore();
   renderDesignList();
-  loadRegistry(); renderRegistry();
+  await loadRegistry(); renderRegistry();
+  FolderSync.restore();
   startAntibodyArt();
   try { $("adc_date").value = new Date().toISOString().slice(0, 10); } catch (e) {}
-  // Run the core self-check and surface the badge in the footer.
-  try {
-    const res = ADC.selfCheck();
-    $("selfcheck_badge").innerHTML = "core self-check: " + res.length + "/" + res.length + " golden values \u2713";
-    $("selfcheck_badge").style.color = "var(--ok)";
-  } catch (e) {
-    $("selfcheck_badge").innerHTML = "core self-check FAILED: " + e.message;
-    $("selfcheck_badge").style.color = "var(--warn)";
-  }
+  // Run the core self-check on load and surface both the prominent panel and the footer badge.
+  runSelfCheckPanel();
 });
+
+/* Run ADC.selfCheck() (collect-all: returns PASS/FAIL lines, never throws) and
+   render a prominent on-page banner plus the compact footer badge. Any drift is
+   listed in full rather than stopping at the first mismatch. */
+function runSelfCheckPanel() {
+  const panel = $("selfcheck_panel"), badge = $("selfcheck_badge");
+  let res, fails;
+  try {
+    res = ADC.selfCheck();
+    fails = res.filter((l) => l.indexOf("FAIL") === 0);
+  } catch (e) {
+    // selfCheck itself is not supposed to throw; treat any exception as a hard failure.
+    res = ["FAIL selfCheck threw: " + (e && e.message ? e.message : e)];
+    fails = res;
+  }
+  const total = res.length, passed = total - fails.length;
+  if (panel) {
+    panel.hidden = false;
+    if (fails.length === 0) {
+      panel.className = "selfcheck ok";
+      panel.innerHTML =
+        '<svg class="sc-ic" aria-hidden="true"><use href="#ic-check"/></svg>'
+        + '<div class="sc-body"><b>Core self-check passed</b> &mdash; all ' + total
+        + ' golden values match the tested calculation core (Python + JS + this page kept in lock-step).</div>';
+    } else {
+      panel.className = "selfcheck fail";
+      const items = fails.map((f) => "<li>" + escHtml(f) + "</li>").join("");
+      panel.innerHTML =
+        '<svg class="sc-ic" aria-hidden="true"><use href="#ic-info"/></svg>'
+        + '<div class="sc-body"><b>Core self-check FAILED &mdash; ' + fails.length + ' of ' + total
+        + ' checks drifted.</b> Results below may be unreliable; the following golden values did not match:'
+        + '<ul>' + items + '</ul></div>';
+    }
+  }
+  if (badge) {
+    if (fails.length === 0) {
+      badge.innerHTML = "core self-check: " + passed + "/" + total + " golden values \u2713";
+      badge.style.color = "var(--ok)";
+    } else {
+      badge.innerHTML = "core self-check: " + passed + "/" + total + " \u2014 " + fails.length + " FAILED";
+      badge.style.color = "var(--danger)";
+    }
+  }
+}
 
 </script>
 </body>
