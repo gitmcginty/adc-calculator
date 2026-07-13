@@ -519,6 +519,96 @@ def test_dye_library_integrity():
     assert af647 is not None and af647["lmax"] == 647
 
 
+# ---- Payload–linker library -------------------------------------------------
+def test_payload_library_integrity():
+    assert len(core.PAYLOAD_LIBRARY) == 9
+    sourced = [p for p in core.PAYLOAD_LIBRARY if p["sourced"]]
+    assert len(sourced) == 3
+    # every entry has the full schema
+    fields = {"name", "cls", "mw_free", "mw_conj", "lambda_max",
+              "eps_lmax_free", "eps280_free", "eps_lmax_conj", "eps280_conj",
+              "sourced", "source"}
+    for p in core.PAYLOAD_LIBRARY:
+        assert fields <= set(p.keys())
+        # a reference-only entry must not carry any ε value (no fabricated ε)
+        if not p["sourced"]:
+            assert p["eps_lmax_free"] is None and p["eps280_free"] is None
+            assert p["eps_lmax_conj"] is None and p["eps280_conj"] is None
+
+
+def test_get_payload_vcmmae():
+    p = core.get_payload("vc-MMAE")
+    assert p is not None
+    assert p["eps_lmax_conj"] == approx(15900.0)
+    assert p["eps280_conj"] == approx(1500.0)
+    assert p["lambda_max"] == 248
+    assert p["mw_conj"] == approx(1316.63)
+    assert p["cls"] == "auristatin"
+    # case-insensitive
+    assert core.get_payload("VC-MMAE") is p
+
+
+def test_get_payload_maytansinoids():
+    dm1 = core.get_payload("DM1")
+    assert dm1["eps_lmax_free"] == approx(26790.0)
+    assert dm1["eps280_free"] == approx(0.0)
+    assert dm1["lambda_max"] == 252
+    dm4 = core.get_payload("DM4")
+    assert dm4["eps_lmax_free"] == approx(28044.0)
+    assert dm4["eps280_free"] == approx(5700.0)
+
+
+def test_get_payload_reference_only_and_missing():
+    mcmmaf = core.get_payload("mc-MMAF")
+    assert mcmmaf is not None and mcmmaf["sourced"] is False
+    assert mcmmaf["eps_lmax_conj"] is None
+    assert core.get_payload("nonexistent") is None
+
+
+# ---- Product-quality aggregates: SEC purity & free-drug (§9c) ---------------
+def test_sec_purity_area_normalised():
+    r = core.sec_purity(1900.0, 62.0, 38.0)
+    assert r["pct_monomer"] == pytest.approx(95.0, rel=REL)
+    assert r["pct_hmw"] == pytest.approx(3.1, rel=REL)
+    assert r["pct_lmw"] == pytest.approx(1.9, rel=REL)
+    assert r["total"] == pytest.approx(2000.0, rel=REL)
+    # percentages sum to 100
+    assert r["pct_monomer"] + r["pct_hmw"] + r["pct_lmw"] == pytest.approx(100.0, rel=REL)
+
+
+def test_sec_purity_two_peak_default_lmw():
+    r = core.sec_purity(4900.0, 100.0)
+    assert r["pct_monomer"] == pytest.approx(98.0, rel=REL)
+    assert r["pct_hmw"] == pytest.approx(2.0, rel=REL)
+    assert r["pct_lmw"] == 0.0
+
+
+def test_sec_purity_rejects_negative_and_zero():
+    with pytest.raises(ValueError):
+        core.sec_purity(-1.0, 1.0)
+    with pytest.raises(ValueError):
+        core.sec_purity(1.0, -1.0)
+    with pytest.raises(ValueError):
+        core.sec_purity(0.0, 0.0)
+
+
+def test_free_drug_percent():
+    r = core.free_drug_percent(1.5, 598.5)
+    assert r["pct_free"] == pytest.approx(0.25, rel=REL)
+    assert r["pct_conjugated"] == pytest.approx(99.75, rel=REL)
+    assert r["total"] == pytest.approx(600.0, rel=REL)
+    assert r["pct_free"] + r["pct_conjugated"] == pytest.approx(100.0, rel=REL)
+
+
+def test_free_drug_percent_rejects_negative_and_zero():
+    with pytest.raises(ValueError):
+        core.free_drug_percent(-0.1, 1.0)
+    with pytest.raises(ValueError):
+        core.free_drug_percent(1.0, -0.1)
+    with pytest.raises(ValueError):
+        core.free_drug_percent(0.0, 0.0)
+
+
 # ---- Registry ---------------------------------------------------------------
 def test_make_registry_record_normalizes():
     r = core.make_registry_record(
@@ -727,6 +817,33 @@ def test_predict_dar_distribution_rejects_bad_input():
         core.predict_dar_distribution(4, feed_ratio=9.0)      # p_site > 1 (>capacity 8)
     with pytest.raises(ValueError):
         core.predict_dar_distribution(4, p_site=0.5, drugs_per_site=0)  # bad d
+
+
+def test_measured_dar_distribution_skewed_profile():
+    r = core.measured_dar_distribution({0: 5, 2: 35, 4: 40, 6: 15, 8: 5})
+    assert r["mean_dar"] == pytest.approx(3.6, rel=REL)
+    assert r["sd"] == pytest.approx(1.854723699099141, rel=REL)
+    assert r["variance"] == pytest.approx(3.44, rel=REL)
+    assert r["total"] == pytest.approx(100.0, rel=REL)
+    assert r["fractions"][2] == pytest.approx(0.35, rel=REL)
+    assert r["fractions"][4] == pytest.approx(0.40, rel=REL)
+    assert sum(r["fractions"].values()) == pytest.approx(1.0, rel=REL)
+
+
+def test_measured_dar_distribution_matches_dispersion_and_normalises():
+    # abundances need not sum to 100; mean is unchanged by a common scale factor
+    a = core.measured_dar_distribution({0: 10, 2: 70, 4: 80, 6: 30, 8: 10})
+    b = core.measured_dar_distribution({0: 5, 2: 35, 4: 40, 6: 15, 8: 5})
+    assert a["mean_dar"] == pytest.approx(b["mean_dar"], rel=REL)
+    assert a["sd"] == pytest.approx(b["sd"], rel=REL)
+    assert a["fractions"][2] == pytest.approx(0.35, rel=REL)
+
+
+def test_measured_dar_distribution_rejects_bad_input():
+    with pytest.raises(ValueError):
+        core.measured_dar_distribution({0: -1, 2: 5})
+    with pytest.raises(ValueError):
+        core.measured_dar_distribution({0: 0, 2: 0})
 
 
 # ---------------------------------------------------------------------------
