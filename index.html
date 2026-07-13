@@ -323,6 +323,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
   <button data-tab="conj">Conjugation Designer</button>
   <button data-tab="ellman">Ellman (free thiols)</button>
   <button data-tab="yield">Yield &amp; Formulation</button>
+  <button data-tab="quality">Product Quality</button>
   <button data-tab="dyes">Dye / Payload Library</button>
   <button data-tab="registry">ADC Registry</button>
   <button data-tab="definitions">Definitions</button>
@@ -360,8 +361,15 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
       <div class="formula">DAR = (&epsilon;&lambda;max,mAb &minus; R&middot;&epsilon;280,mAb) / (R&middot;&epsilon;280,LP &minus; &epsilon;&lambda;max,LP),   R = A&lambda;max / A280</div>
       <div class="split">
         <div>
-          <label class="field"><span>Payload from library</span>
+          <label class="field"><span>Fluorophore from library</span>
             <select id="uv_dyesel"><option value="">&mdash; manual entry &mdash;</option></select></label>
+          <div class="grid">
+            <label class="field"><span>Cytotoxic payload from library</span>
+              <select id="uv_payloadsel"><option value="">&mdash; manual entry &mdash;</option></select></label>
+            <label class="field"><span>&epsilon; form</span>
+              <select id="uv_payloadform"><option value="conj">Conjugated drug-linker</option><option value="free">Free payload</option></select></label>
+          </div>
+          <p class="sub" id="uv_payload_src" style="margin:-2px 0 8px;display:none"></p>
           <label class="field"><span>A280 <span class="unit">(AU)</span></span><input id="uv_a280" type="number" min="0" step="0.0001" value="7.4315"></label>
           <label class="field"><span>A&lambda;max <span class="unit">(AU)</span></span><input id="uv_almax" type="number" min="0" step="0.0001" value="0.7827"></label>
           <div class="grid">
@@ -507,6 +515,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
     <h2>Predicted DAR distribution</h2>
     <p class="desc">Model the drug-load distribution from a site-occupancy model: each of <em>n</em> equivalent, independent conjugation sites reacts with probability <em>p</em>, and a reacted site carries <em>d</em> drugs. Pick the chemistry &mdash; cysteine/TCEP reduction of interchain disulfides adds <em>d</em>&nbsp;=&nbsp;2 drugs per reacted site (so DAR steps in even numbers), while stochastic amine/lysine coupling adds <em>d</em>&nbsp;=&nbsp;1 (smooth 0,1,2,&hellip; ladder). Set <em>p</em> directly, or derive it from the drug:antibody feed ratio and coupling efficiency.</p>
     <div class="formula">P(DAR = d&middot;j) = C(n,j) p&#7503; (1&minus;p)&#8319;&#8315;&#7502;,   mean = d&middot;np,   variance = d&sup2;&middot;np(1&minus;p)</div>
+    <div class="note"><b>The binomial model assumes equivalent, independent sites.</b> It treats every conjugation site as identical and reacting independently of the others. Native interchain-cysteine conjugation does not obey this: the four inter-chain disulfides reduce at unequal rates and reduction is partly cooperative, so real DAR profiles measured by HIC or LC-MS are typically more skewed &mdash; and often more bimodal &mdash; than this prediction. Treat the modelled curve as a planning estimate, and confirm the actual distribution by measurement (paste one below to compare).</div>
     <div class="split">
       <div>
         <div class="grid cols3">
@@ -532,6 +541,20 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         </div>
       </div>
       <div class="sticky-side"><div class="results" id="pd_out"></div></div>
+    </div>
+    <div style="margin-top:24px;border-top:1px solid var(--line);padding-top:18px">
+      <h3 style="margin:0 0 6px">Compare against a measured distribution</h3>
+      <p class="desc" style="margin-bottom:14px">Paste an observed DAR profile from HIC or LC-MS &mdash; one <code>DAR&nbsp;&nbsp;abundance</code> pair per line (abundance as % or raw peak area; it need not sum to 100). The app normalises it and reports the measured mean DAR, SD and variance with <em>no</em> distributional assumption, so you can see how far the real product departs from the binomial model above.</p>
+      <div class="split">
+        <div>
+          <label class="field"><span>Measured species <span class="unit">DAR &nbsp; abundance, one pair per line</span></span><textarea id="pd_meas" rows="6" oninput="calcMeasuredDist()" style="font-family:var(--mono);font-size:12px;width:100%;box-sizing:border-box;resize:vertical" placeholder="0  5&#10;2  35&#10;4  40&#10;6  15&#10;8  5"></textarea></label>
+          <div class="pillrow">
+            <button onclick="measuredDistExample()">Load example</button>
+            <button onclick="clearMeasuredDist()">Clear</button>
+          </div>
+        </div>
+        <div class="sticky-side"><div class="results" id="pd_meas_out"></div></div>
+      </div>
     </div>
   </div>
 </section>
@@ -579,6 +602,35 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
         <label class="field"><span>Target [ADC] <span class="unit">(mg/mL, optional)</span></span><input id="yl_target" type="number" min="0" step="0.1" value="10"></label>
       </div></div>
       <div><div class="results" id="yl_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('yield')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_yield_msg" style="align-self:center"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Product Quality (SEC purity / free drug) ============ -->
+<section class="panel" id="panel-quality">
+  <div class="card">
+    <h2>SEC purity &mdash; monomer / HMW / LMW</h2>
+    <p class="desc">Size-exclusion chromatography separates by hydrodynamic size: <b>monomer</b> is the intact one-antibody product; <b>HMW</b> (high-molecular-weight) is aggregate/dimer eluting earlier; <b>LMW</b> (low-molecular-weight) is fragments/clips eluting later. Percentages are area-normalised. Leave LMW at 0 for two-peak integration.</p>
+    <div class="formula">%class = AUC&#8339; / (AUC&#8344;&#8342;&#8345;&#8342;&#8339; + AUC&#8341;&#8347;&#8355; + AUC&#8343;&#8347;&#8355;) &times; 100</div>
+    <div class="split">
+      <div><div class="grid">
+        <label class="field"><span>Monomer AUC <span class="unit">(area)</span></span><input id="sec_mono" type="number" min="0" step="any" value="1900"></label>
+        <label class="field"><span>HMW AUC <span class="unit">(area)</span></span><input id="sec_hmw" type="number" min="0" step="any" value="62"></label>
+        <label class="field"><span>LMW AUC <span class="unit">(area, optional)</span></span><input id="sec_lmw" type="number" min="0" step="any" value="38"></label>
+      </div></div>
+      <div><div class="results" id="sec_out"></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Free (unconjugated) drug</h2>
+    <p class="desc">The fraction of payload present as free small molecule &mdash; a safety CQA, typically by reversed-phase HPLC or an SEC/UPLC free-drug method. Enter free and conjugated amounts in <b>matching units</b> (molar concentration, peak area, or mass); the percentage is unit-independent.</p>
+    <div class="formula">%free = free / (free + conjugated) &times; 100</div>
+    <div class="split">
+      <div><div class="grid">
+        <label class="field"><span>Free drug <span class="unit">(matching units)</span></span><input id="fd_free" type="number" min="0" step="any" value="1.5"></label>
+        <label class="field"><span>Conjugated drug <span class="unit">(matching units)</span></span><input id="fd_conj" type="number" min="0" step="any" value="598.5"></label>
+      </div></div>
+      <div><div class="results" id="fd_out"></div></div>
     </div>
   </div>
 </section>
@@ -1379,6 +1431,18 @@ function distributionDispersion(weights) {
   let variance = 0; for (const k of ks) variance += weights[k] * (Number(k) - mean) ** 2; variance /= total;
   return { mean, variance, sd: Math.sqrt(variance) };
 }
+// Normalise a MEASURED drug-load distribution and report its moments. Makes no
+// distributional assumption: meanDar is the abundance-weighted average of the
+// observed species. Non-negative abundances, positive total.
+function measuredDarDistribution(species) {
+  const ks = Object.keys(species);
+  for (const k of ks) if (species[k] < 0) throw new Error("Species abundances must be non-negative");
+  let total = 0; for (const k of ks) total += species[k];
+  if (total <= 0) throw new Error("Total abundance must be > 0");
+  const fractions = {}; for (const k of ks) fractions[k] = species[k] / total;
+  const disp = distributionDispersion(species);
+  return { fractions, meanDar: disp.mean, variance: disp.variance, sd: disp.sd, total };
+}
 // Exact binomial coefficient C(n,k) via a multiplicative loop (no factorial
 // overflow for the small site counts used in ADC conjugation).
 function _binomCoeff(n, k) {
@@ -1430,6 +1494,38 @@ function darLcmsReducedUncertainty(lightChain, heavyChain) {
            ci95Low: dar - 1.96 * sigmaDar, ci95High: dar + 1.96 * sigmaDar };
 }
 
+// ── 9c. Product-quality aggregates: SEC purity & free-drug (spec §9c) ───────
+// SEC separates by size into monomer (product), HMW (aggregates, earlier) and
+// LMW (fragments, later). Percentages are area-normalised. Areas non-negative,
+// total positive.
+function secPurity(aucMonomer, aucHmw, aucLmw = 0.0) {
+  for (const [label, v] of [["monomer", aucMonomer], ["HMW", aucHmw], ["LMW", aucLmw]]) {
+    if (v < 0) throw new Error(`SEC ${label} peak area must be non-negative`);
+  }
+  const total = aucMonomer + aucHmw + aucLmw;
+  if (total <= 0) throw new Error("Total SEC peak area must be > 0");
+  return {
+    pctMonomer: (aucMonomer / total) * 100.0,
+    pctHmw: (aucHmw / total) * 100.0,
+    pctLmw: (aucLmw / total) * 100.0,
+    total,
+  };
+}
+
+// Free (unconjugated) drug is a safety CQA. Inputs in matching units;
+// %free = free / (free + conjugated) * 100. Non-negative inputs, positive total.
+function freeDrugPercent(freeDrug, conjugatedDrug) {
+  if (freeDrug < 0) throw new Error("Free-drug amount must be non-negative");
+  if (conjugatedDrug < 0) throw new Error("Conjugated-drug amount must be non-negative");
+  const total = freeDrug + conjugatedDrug;
+  if (total <= 0) throw new Error("Total drug amount must be > 0");
+  return {
+    pctFree: (freeDrug / total) * 100.0,
+    pctConjugated: (conjugatedDrug / total) * 100.0,
+    total,
+  };
+}
+
 // ── 10. Embedded dye / payload library (spreadsheet cols L-R) ───────────────
 const DYE_LIBRARY = [
   { name: "AF350", mw: 410, e_lmax: 19000, cf280: 0.19, e280: 3610, lmax: 350, comment: null },
@@ -1459,6 +1555,44 @@ const DYE_LIBRARY = [
 function getDye(name) {
   const key = String(name).trim().toLowerCase();
   return DYE_LIBRARY.find((d) => d.name.toLowerCase() === key) || null;
+}
+
+// ── Payload–linker reference library (spec §9c): mirrors adc_core.py/.js.
+//    ε for DAR-by-UV (drug ελmax + its ε280). FREE vs CONJUGATED kept
+//    separate; null ε -> UI shows "ε not in library; measure/enter manually".
+const PAYLOAD_LIBRARY = [
+  { name: "vc-MMAE", cls: "auristatin", mw_free: 717.98, mw_conj: 1316.63, lambda_max: 248,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: 15900.0, eps280_conj: 1500.0,
+    sourced: true, source: "Cruz & Kayser DAR-by-UV/Vis (drug-linker 15,900@248 / 1,500@280); Cancers 2009 11(6):870." },
+  { name: "DM1", cls: "maytansinoid", mw_free: 738.5, mw_conj: null, lambda_max: 252,
+    eps_lmax_free: 26790.0, eps280_free: 0.0, eps_lmax_conj: null, eps280_conj: null,
+    sourced: true, source: "US Patent 7,666,414 (deJ591-DM1, Ex.17): εDM1@252=26,790; mAb ratio 0.378." },
+  { name: "DM4", cls: "maytansinoid", mw_free: 780.5, mw_conj: null, lambda_max: 252,
+    eps_lmax_free: 28044.0, eps280_free: 5700.0, eps_lmax_conj: null, eps280_conj: null,
+    sourced: true, source: "US Patent 10,780,179 (anti-EGFR-SPDB-DM4): 28,044@252 / 5,700@280." },
+  { name: "mc-MMAF", cls: "auristatin", mw_free: 731.95, mw_conj: 1011.6, lambda_max: 248,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — auristatin λmax≈248; ε not in library (measure or enter manually)." },
+  { name: "deruxtecan (DXd)", cls: "camptothecin", mw_free: 493.5, mw_conj: 1034.0, lambda_max: 370,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — exatecan-derivative camptothecin, DAR by UV at 370 & 280 nm (US 12,491,259); ε not in library." },
+  { name: "SN-38", cls: "camptothecin", mw_free: 392.4, mw_conj: null, lambda_max: 370,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — camptothecin λmax≈370; ε not in library (measure or enter manually)." },
+  { name: "tesirine (SG3199)", cls: "PBD dimer", mw_free: 558.6, mw_conj: 1502.0, lambda_max: 320,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — pyrrolobenzodiazepine dimer λmax≈320; ε not in library." },
+  { name: "calicheamicin γ1", cls: "enediyne", mw_free: 1368.4, mw_conj: null, lambda_max: null,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — enediyne; ε not in library (measure or enter manually)." },
+  { name: "\u03b1-amanitin", cls: "amatoxin", mw_free: 918.97, mw_conj: null, lambda_max: 305,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — amatoxin λmax≈305; ε not in library (measure or enter manually)." },
+];
+
+function getPayload(name) {
+  const key = String(name).trim().toLowerCase();
+  return PAYLOAD_LIBRARY.find((p) => p.name.toLowerCase() === key) || null;
 }
 
 // ── Physical-bounds guards (spec §10b): mirrors adc_core.py / adc_core.js.
@@ -1659,6 +1793,35 @@ function selfCheck() {
   results.push("PASS physical-bounds guards");
   must(DYE_LIBRARY.length !== 22, "dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
+  must(PAYLOAD_LIBRARY.length !== 9, "payload library length != 9");
+  must(PAYLOAD_LIBRARY.filter((p) => p.sourced).length !== 3, "payload sourced count != 3");
+  const _vc = getPayload("vc-MMAE");
+  chk(_vc.eps_lmax_conj, 15900.0, "payload vc-MMAE ελmax_conj");
+  chk(_vc.eps280_conj, 1500.0, "payload vc-MMAE ε280_conj");
+  chk(_vc.lambda_max, 248, "payload vc-MMAE λmax");
+  const _dm1 = getPayload("DM1");
+  chk(_dm1.eps_lmax_free, 26790.0, "payload DM1 ελmax_free");
+  const _dm4 = getPayload("DM4");
+  chk(_dm4.eps280_free, 5700.0, "payload DM4 ε280_free");
+  must(getPayload("mc-MMAF").sourced !== false, "payload mc-MMAF must be reference-only");
+  must(getPayload("nonexistent") !== null, "payload missing lookup must be null");
+  results.push(`PASS payload library (${PAYLOAD_LIBRARY.length} entries)`);
+  const _sec = secPurity(1900.0, 62.0, 38.0);
+  chk(_sec.pctMonomer, 95.0, "SEC %monomer");
+  chk(_sec.pctHmw, 3.1, "SEC %HMW");
+  chk(_sec.pctLmw, 1.9, "SEC %LMW");
+  const _sec2 = secPurity(4900.0, 100.0);
+  chk(_sec2.pctMonomer, 98.0, "SEC %monomer (2-peak)");
+  chk(_sec2.pctLmw, 0.0, "SEC %LMW default 0");
+  must(!(() => { try { secPurity(-1, 1); return false; } catch (e) { return true; } })(), "SEC negative must throw");
+  const _fd = freeDrugPercent(1.5, 598.5);
+  chk(_fd.pctFree, 0.25, "free-drug %free");
+  chk(_fd.pctConjugated, 99.75, "free-drug %conjugated");
+  const _mdd = measuredDarDistribution({ 0: 5, 2: 35, 4: 40, 6: 15, 8: 5 });
+  chk(_mdd.meanDar, 3.6, "measured DAR mean");
+  chk(_mdd.sd, 1.854723699099141, "measured DAR sd");
+  chk(_mdd.fractions[2], 0.35, "measured DAR frac(2)");
+  must(!(() => { try { measuredDarDistribution({ 0: -1 }); return false; } catch (e) { return true; } })(), "measured DAR negative must throw");
   return results;
 }
 
@@ -1679,8 +1842,8 @@ const ADC = {
   assignSelection, aggregateDosingPlans,
   linearRegression, extinctionCoefficient,
   darUVUncertainty, distributionDispersion, darLcmsReducedUncertainty,
-  predictDarDistribution,
-  getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
+  predictDarDistribution, measuredDarDistribution, secPurity, freeDrugPercent,
+  getDye, DYE_LIBRARY, getPayload, PAYLOAD_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
   checkPhysicalBounds, DAR_MAX_PLAUSIBLE, R_MAX_PLAUSIBLE,
   makeRegistryRecord, registryToCsv, summarizeRegistry, REGISTRY_FIELDS,
 };
@@ -2122,7 +2285,7 @@ function uvPreset(kind) {
   v("uv_mwmab", 145000); v("uv_e280mab_mass", 1.4); v("uv_a280", 7.4315);
   v("uv_almax", 0.7827); v("uv_df", 1); v("uv_mwlp", 1559.62);
   v("uv_e280lp", 7287); v("uv_elmaxlp", 9624);
-  $("uv_dyesel").value = "";
+  $("uv_dyesel").value = ""; $("uv_payloadsel").value = ""; $("uv_payload_src").style.display = "none";
   v("uv_elmaxmab", kind === "sheet" ? (0.7827 / 7.4315 * 203000) : 0);
   calcUV();
 }
@@ -2223,6 +2386,31 @@ function calcEllman() {
   } catch (e) { $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
 
+// ================= Product Quality: SEC purity + free drug =================
+function calcSec() {
+  try {
+    const r = ADC.secPurity(num("sec_mono"), num("sec_hmw"), num("sec_lmw") || 0);
+    const hmwHigh = r.pctHmw > 5;   // typical release spec flags aggregate above ~5%
+    $("sec_out").innerHTML = "<h3>Results</h3>"
+      + `<div class="rrow primary"><span class="k">Monomer</span><span class="v">${fmt(r.pctMonomer, 2)} %</span></div>`
+      + `<div class="rrow"><span class="k">HMW (aggregate)</span><span class="v${hmwHigh ? " neg" : ""}">${fmt(r.pctHmw, 2)} %</span></div>`
+      + rrow("LMW (fragments)", fmt(r.pctLmw, 2) + " %")
+      + rrow("Total area", fmt(r.total, 1))
+      + (hmwHigh ? resNote("HMW &gt; 5% &mdash; aggregate above a typical release limit; confirm against your product specification.") : "");
+  } catch (e) { $("sec_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
+}
+function calcFreeDrug() {
+  try {
+    const r = ADC.freeDrugPercent(num("fd_free"), num("fd_conj"));
+    const high = r.pctFree > 2;   // free-drug release limits are commonly a low single-digit %
+    $("fd_out").innerHTML = "<h3>Results</h3>"
+      + `<div class="rrow primary"><span class="k">Free drug</span><span class="v${high ? " neg" : ""}">${fmt(r.pctFree, 3)} %</span></div>`
+      + rrow("Conjugated drug", fmt(r.pctConjugated, 3) + " %")
+      + rrow("Total drug", fmt(r.total, 3))
+      + (high ? resNote("Free drug &gt; 2% &mdash; above a typical release limit; confirm against your product specification.") : "");
+  } catch (e) { $("fd_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
+}
+
 // ================= HIC =================
 let hicSpecies = [{ k: 0, a: 5 }, { k: 1, a: 15 }, { k: 2, a: 45 }, { k: 3, a: 25 }, { k: 4, a: 10 }];
 function renderHic() {
@@ -2287,14 +2475,61 @@ function calcDarDist() {
       html += rrow("DAR " + k, fmt(100 * probs[k], 2) + " %");
     });
     out.innerHTML = html;
-  } catch (e) { out.innerHTML = placeholder(e.message || "Enter valid n and occupancy"); }
+    pdLastMean = res.meanDar;
+  } catch (e) { out.innerHTML = placeholder(e.message || "Enter valid n and occupancy"); pdLastMean = null; }
 }
+let pdLastMean = null;
 function darDistPreset(kind) {
   if (kind === "thiomab") { $("pd_dps").value = "2"; $("pd_nsites").value = 2; $("pd_mode").value = "feed"; $("pd_feed").value = 2.2; $("pd_eff").value = 0.95; }
   else if (kind === "lysine") { $("pd_dps").value = "1"; $("pd_nsites").value = 8; $("pd_mode").value = "feed"; $("pd_feed").value = 4; $("pd_eff").value = 0.9; }
   else { $("pd_dps").value = "2"; $("pd_nsites").value = 4; $("pd_mode").value = "feed"; $("pd_feed").value = 6.4; $("pd_eff").value = 0.9; }
   calcDarDist();
 }
+// Parse a pasted "DAR abundance" table: one pair per line, separated by
+// whitespace, comma, tab or semicolon. Lines starting with # and blank lines
+// are ignored. Returns a { dar: abundance } map (later duplicates overwrite).
+function parseMeasuredDist(text) {
+  const species = {};
+  String(text || "").split(/\r?\n/).forEach((line) => {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) return;
+    const parts = t.split(/[\s,;\t]+/).filter((x) => x !== "");
+    if (parts.length < 2) throw new Error("Each line needs a DAR and an abundance: \u201c" + t + "\u201d");
+    const dar = Number(parts[0]), ab = Number(parts[1]);
+    if (!isFinite(dar) || !isFinite(ab)) throw new Error("Non-numeric value on line: \u201c" + t + "\u201d");
+    species[dar] = ab;
+  });
+  if (!Object.keys(species).length) throw new Error("Paste at least one DAR / abundance pair");
+  return species;
+}
+function calcMeasuredDist() {
+  const out = $("pd_meas_out");
+  const raw = $("pd_meas").value;
+  if (!raw.trim()) { out.innerHTML = placeholder("Paste a measured DAR profile to compare against the model"); return; }
+  try {
+    const species = parseMeasuredDist(raw);
+    const m = ADC.measuredDarDistribution(species);
+    let html = "<h3>Measured distribution</h3>"
+      + rrow("Mean DAR (measured)", fmt(m.meanDar, 3), "primary")
+      + rrow("Distribution SD", "&plusmn; " + fmt(m.sd, 3) + " drugs")
+      + rrow("Variance", fmt(m.variance, 4))
+      + rrow("Total abundance", fmt(m.total, 3));
+    if (pdLastMean != null && isFinite(pdLastMean)) {
+      const delta = m.meanDar - pdLastMean;
+      html += rrow("\u0394 vs model mean", (delta >= 0 ? "+" : "") + fmt(delta, 3) + " DAR");
+    }
+    html += "<h3 style='margin-top:14px'>Normalised species</h3>";
+    Object.keys(m.fractions).sort((a, b) => a - b).forEach((k) => {
+      html += rrow("DAR " + escHtml(k), fmt(100 * m.fractions[k], 2) + " %");
+    });
+    out.innerHTML = html + resNote("Measured moments are the abundance-weighted mean/SD/variance of the pasted profile &mdash; no binomial (or any) shape is assumed. A measured mean or SD that departs from the model reflects unequal, cooperative site reactivity.");
+  } catch (e) { out.innerHTML = placeholder(escHtml(e.message || "Could not parse the measured distribution")); }
+}
+function measuredDistExample() {
+  $("pd_meas").value = "0  5\n2  35\n4  40\n6  15\n8  5";
+  calcMeasuredDist();
+}
+function clearMeasuredDist() { $("pd_meas").value = ""; calcMeasuredDist(); }
 
 // ================= LC-MS =================
 let lcmsMode = "reduced";
@@ -3407,7 +3642,46 @@ function populateDyeSelect() {
     o.textContent = `${d.name}${d._user ? " \u2605" : ""} (\u03bbmax ${d.lmax ?? "?"})`;
     sel.appendChild(o);
   });
-  sel.onchange = () => { const d = findDye(sel.value); if (d) { $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax; calcUV(); } };
+  sel.onchange = () => { const d = findDye(sel.value); if (d) { $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax; $("uv_payloadsel").value = ""; $("uv_payload_src").style.display = "none"; calcUV(); } };
+}
+// Cytotoxic payload picker: fills LP MW + ε280 + ελmax from the cited payload
+// library. FREE vs CONJUGATED forms are distinct; the form dropdown selects
+// which set of extinction coefficients to load. Entries whose ε is not in the
+// library (sourced=false) show a message and leave the fields for manual entry.
+function payloadEpsForForm(p, form) {
+  if (form === "free") {
+    return { mw: p.mw_free, e280: p.eps280_free, elmax: p.eps_lmax_free };
+  }
+  return { mw: p.mw_conj != null ? p.mw_conj : p.mw_free, e280: p.eps280_conj, elmax: p.eps_lmax_conj };
+}
+function applyPayloadSelection() {
+  const sel = $("uv_payloadsel"), form = $("uv_payloadform").value, note = $("uv_payload_src");
+  const p = ADC.getPayload(sel.value);
+  if (!p) { note.style.display = "none"; return; }
+  const e = payloadEpsForForm(p, form);
+  if (e.mw != null) $("uv_mwlp").value = e.mw;
+  const label = form === "free" ? "free payload" : "conjugated drug-linker";
+  if (e.elmax != null && e.e280 != null) {
+    $("uv_e280lp").value = e.e280; $("uv_elmaxlp").value = e.elmax;
+    $("uv_dyesel").value = "";
+    note.innerHTML = `<b>${escHtml(p.name)}</b> (${escHtml(p.cls)}, &lambda;max ${p.lambda_max ?? "?"} nm, ${escHtml(label)}) &mdash; &epsilon; from library. Source: ${escHtml(p.source)}`;
+    note.style.color = "var(--muted)"; note.style.display = "block";
+    calcUV();
+  } else {
+    note.innerHTML = `<b>${escHtml(p.name)}</b> (${escHtml(p.cls)}, &lambda;max ${p.lambda_max ?? "?"} nm) &mdash; &epsilon; for the ${escHtml(label)} form is not in the library. Enter &epsilon;280 LP and &epsilon;&lambda;max LP manually (measure your lot), or switch &epsilon; form.`;
+    note.style.color = "var(--warn)"; note.style.display = "block";
+  }
+}
+function populatePayloadSelect() {
+  const sel = $("uv_payloadsel");
+  while (sel.options.length > 1) sel.remove(1);
+  ADC.PAYLOAD_LIBRARY.forEach((p) => {
+    const o = document.createElement("option"); o.value = p.name;
+    o.textContent = `${p.name} (${p.cls}${p.sourced ? "" : ", \u03b5 not in library"})`;
+    sel.appendChild(o);
+  });
+  sel.onchange = applyPayloadSelection;
+  $("uv_payloadform").onchange = applyPayloadSelection;
 }
 function deleteUserDye(name) {
   userDyes = userDyes.filter((d) => d.name.toLowerCase() !== (name || "").toLowerCase());
@@ -3743,6 +4017,7 @@ function initBindings() {
   document.querySelectorAll("#method-uv input").forEach((el) => (el.oninput = calcUV));
   document.querySelectorAll("#panel-ellman input").forEach((el) => (el.oninput = calcEllman));
   document.querySelectorAll("#panel-yield input").forEach((el) => (el.oninput = calcYield));
+  document.querySelectorAll("#panel-quality input").forEach((el) => (el.oninput = el.id.startsWith("sec_") ? calcSec : calcFreeDrug));
   // Plate painting: marquee-select a block of wells.
   const grid = $("ds_grid");
   grid.addEventListener("pointerdown", dsGridPointerDown);
@@ -3770,16 +4045,18 @@ window.addEventListener("DOMContentLoaded", async () => {
   // Renders below run after the data is in memory so the UI is never briefly empty.
   await loadUserDyes();
   populateDyeSelect();
+  populatePayloadSelect();
   initBindings();
   conjPreset("thiomab");
   calcDarDist();
+  calcMeasuredDist();
   renderHic(); calcHic();
   setLcmsMode("reduced");
   setDarMethod("uv");
   renderDyes();
   renderEcRows();
   $("ec_results").innerHTML = placeholder("Enter a dilution series and press Compute \u03b5");
-  calcUV(); calcEllman(); calcYield();
+  calcUV(); calcEllman(); calcYield(); calcSec(); calcFreeDrug();
   $("ds_well").value = ADC.plateWellVolume(dsPlate());
   dsGroupModeChange(); dsUnitChange(); calcDosing();
   await hydrateDesignStore();
