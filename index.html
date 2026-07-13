@@ -294,9 +294,22 @@ table.plate td.well.pending{background:var(--accent);color:var(--on-accent);outl
 /* ghost prompt shown over a blank plate to signal it's paintable */
 .ds-empty-prompt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   pointer-events:none;z-index:2}
-.ds-empty-prompt span{background:var(--panel);border:1px dashed var(--accent);color:var(--accent);
-  border-radius:10px;padding:12px 20px;font-size:13px;font-weight:500;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+.ds-empty-prompt .ds-empty-box{background:var(--panel);border:1px dashed var(--accent);color:var(--accent);
+  border-radius:10px;padding:14px 22px;font-size:13px;font-weight:500;box-shadow:0 2px 12px rgba(0,0,0,.08);
+  display:flex;flex-direction:column;align-items:center;gap:8px;text-align:center;pointer-events:auto}
+.ds-empty-prompt .ds-empty-box button{pointer-events:auto}
 table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint);margin-left:6px;opacity:.5}
+/* Plate legend: swatch + dose-ramp per group, doubles as printable bench key */
+#ds_legend{margin-top:8px}
+.ds-legend{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;padding:8px 10px;
+  border:1px solid var(--line);border-radius:8px;background:var(--panel)}
+.ds-legend .ds-leg-title{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.ds-leg-item{display:inline-flex;align-items:center;gap:7px;font-size:12px}
+.ds-leg-item b{font-weight:600}
+.ds-leg-item .sub{color:var(--muted);font-size:11px}
+.ds-leg-ramp{display:inline-block;width:34px;height:13px;border-radius:3px;border:1px solid var(--line);flex:none}
+.ds-leg-scale{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.ds-leg-scale .ds-leg-ramp{background:linear-gradient(90deg,var(--faint),color-mix(in srgb,var(--faint) 38%,transparent))}
 </style>
 </head>
 <body>
@@ -670,8 +683,12 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
       <label class="field"><span>Well volume <span class="unit">(&micro;L)</span></span><input id="ds_well" type="number" min="0" step="1" value="100"></label>
     </div>
 
-    <p class="sub" id="ds_paint_hint">Drag across wells to select a block for a new group.</p>
+    <div class="btnrow" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <p class="sub" id="ds_paint_hint" style="margin:0">Drag across wells to select a block for a new group. <span style="color:var(--muted)">Press <b>Esc</b> to cancel a selection, <b>Ctrl/&#8984;-Z</b> to undo.</span></p>
+      <button class="ghost" id="ds_undo_btn" type="button" onclick="dsUndo()" title="Undo last add or remove (Ctrl/Cmd-Z)" disabled style="padding:2px 10px">&#8630; Undo</button>
+    </div>
     <div id="ds_grid" style="position:relative;overflow:auto;max-height:460px;touch-action:none"></div>
+    <div id="ds_legend"></div>
 
     <!-- Group editor: appears when a block is selected -->
     <div id="ds_group_form" class="card" style="margin-top:12px;display:none">
@@ -2636,6 +2653,43 @@ function calcYield() {
 const DS_GROUP_COLORS = ["#2f7bd6", "#e0762a", "#3aa657", "#b0439a", "#c7391f", "#7a5cc0", "#2196a6", "#a08a1e"];
 let dsState = { groups: [], pending: new Set(), nextId: 1, editingId: null };
 let dsDrag = null;  // {anchorR, anchorC, add} during a marquee drag
+let dsUndoStack = [];  // snapshots of {groups, nextId} taken before each commit/remove
+
+// Serialize the current group set so it can be restored after an undo. cellSet is
+// a Set (not JSON-serializable) and is rebuilt from cells on restore.
+function dsSnapshot() {
+  return JSON.stringify({
+    nextId: dsState.nextId,
+    groups: dsState.groups.map((g) => {
+      const { cellSet, ...rest } = g;
+      return rest;
+    }),
+  });
+}
+function dsPushUndo() {
+  dsUndoStack.push(dsSnapshot());
+  if (dsUndoStack.length > 25) dsUndoStack.shift();  // cap history
+  updateUndoAffordance();
+}
+function dsUndo() {
+  if (!dsUndoStack.length) return;
+  const snap = JSON.parse(dsUndoStack.pop());
+  dsState.groups = snap.groups.map((g) => Object.assign({}, g, {
+    cellSet: new Set((g.cells || []).map(([r, c]) => dsKey(r, c))),
+  }));
+  dsState.nextId = snap.nextId;
+  dsState.pending = new Set();
+  dsState.editingId = null;
+  $("ds_group_form").style.display = "none";
+  renderDoseGrid();
+  renderDoseGroups();
+  calcDosing();
+  updateUndoAffordance();
+}
+function updateUndoAffordance() {
+  const btn = $("ds_undo_btn");
+  if (btn) btn.disabled = !dsUndoStack.length;
+}
 
 // Current serial-dilution settings held in the group form (carry forward between
 // groups + drive the live paint preview).
@@ -2739,9 +2793,18 @@ function renderDoseGrid() {
       });
       return;
     }
+    const gConcs = asg.wells.map((w) => w.finalConcUM).filter((x) => x != null);
+    const cMax = gConcs.length ? Math.max(...gConcs) : null;
+    const cMin = gConcs.length ? Math.min(...gConcs) : null;
     asg.wells.forEach((w) => {
       const cu = w.finalConcUM == null ? null : ADC.convertConcentration(w.finalConcUM, "uM", g.unit);
-      wellInfo[dsKey(w.row, w.col)] = { conc: cu, unit: g.unit, rep: w.replicate, color: g.color, name: g.name };
+      // Opacity ramp: full strength at the top dose, fading to ~40% at the lowest
+      // dose, so the dilution gradient direction is legible on the plate itself.
+      let op = 1;
+      if (w.finalConcUM != null && cMax != null && cMax > cMin) {
+        op = 0.4 + 0.6 * (w.finalConcUM - cMin) / (cMax - cMin);
+      }
+      wellInfo[dsKey(w.row, w.col)] = { conc: cu, unit: g.unit, rep: w.replicate, color: g.color, name: g.name, op };
     });
   });
   const preview = dsPendingPreview();        // provisional concs for the pending block
@@ -2757,7 +2820,14 @@ function renderDoseGrid() {
       const pend = dsState.pending.has(k);
       let cls = "well", style = "", inner = "", title = ADC.rowLabel(r) + (c + 1);
       if (info) {
-        style = `background:${info.color};color:#fff;cursor:pointer;`;
+        const opPct = info.op != null ? Math.round(info.op * 100) : 100;
+        const bg = opPct < 100
+          ? `color-mix(in srgb, ${info.color} ${opPct}%, var(--panel))`
+          : info.color;
+        // White text reads well on strong cells; on the faded low-dose end flip to
+        // dark ink so the concentration stays legible.
+        const fg = opPct < 62 ? "var(--ink)" : "#fff";
+        style = `background:${bg};color:${fg};cursor:pointer;`;
         cls += " committed";
         if (info.conc != null) { inner = `<div class="pc">${fmt(info.conc, 3)}</div><div class="pr">r${info.rep}</div>`; title += `: ${info.name} — ${fmt(info.conc, 4)} ${info.unit}, rep ${info.rep} · click to edit`; }
         else { inner = `<div class="pr">${info.name}</div>`; title += `: ${info.name} · click to edit`; }
@@ -2775,9 +2845,60 @@ function renderDoseGrid() {
   // Empty-state affordance: when nothing is painted or committed yet, overlay a
   // dashed prompt so a first-time user sees the grid is interactive.
   if (!dsState.groups.length && !dsState.pending.size) {
-    g += `<div class="ds-empty-prompt"><span>&#128072; Click and drag across wells to paint your first dose group</span></div>`;
+    g += `<div class="ds-empty-prompt"><div class="ds-empty-box">`
+      + `<span>&#128072; Click and drag across wells to paint your first dose group</span>`
+      + `<button class="act" type="button" onclick="dsStarterTemplate()"><svg class="ic"><use href="#ic-flask"/></svg>Load a starter plate (8-point, 3-fold, triplicate)</button>`
+      + `</div></div>`;
   }
   $("ds_grid").innerHTML = g;
+  renderDoseLegend();
+}
+
+/* Compact color→group legend beside the plate: swatch, name, cell line, ADC, plus
+   a dose-ramp chip echoing the on-plate opacity gradient. Doubles as the printable
+   bench key. All group-supplied strings escaped. */
+function renderDoseLegend() {
+  const box = $("ds_legend");
+  if (!box) return;
+  if (!dsState.groups.length) { box.innerHTML = ""; return; }
+  let h = `<div class="ds-legend"><span class="ds-leg-title">Groups</span>`;
+  dsState.groups.forEach((g) => {
+    const strong = `color-mix(in srgb, ${g.color} 100%, var(--panel))`;
+    const faint = `color-mix(in srgb, ${g.color} 40%, var(--panel))`;
+    const ramp = `<span class="ds-leg-ramp" title="high dose → low dose" style="background:linear-gradient(90deg,${strong},${faint})"></span>`;
+    const meta = [g.cell, g.adc].map((x) => escHtml(x)).filter(Boolean).join(" &middot; ");
+    h += `<span class="ds-leg-item">${ramp}<b>${escHtml(g.name) || "—"}</b>`
+      + (meta ? `<span class="sub">${meta}</span>` : "") + `</span>`;
+  });
+  h += `<span class="ds-leg-scale"><span class="ds-leg-ramp"></span>high &rarr; low dose</span>`;
+  h += `</div>`;
+  box.innerHTML = h;
+}
+
+/* One-click starter: paint an 8-point, 3-fold, triplicate group (A1:C8 on 96-well,
+   dose decreasing down rows) and commit it, turning the blank first-load plate into
+   a working example the user can adjust. No-op if groups already exist. */
+function dsStarterTemplate() {
+  if (dsState.groups.length) return;
+  // Ensure a 96-well plate so the 8x3 block fits; reset unit to nM for the example.
+  if (dsPlate() !== "96") { $("ds_plate").value = "96"; dsPlateChange(); }
+  $("ds_orient").value = "by_row"; dsOrientChange();
+  $("ds_unit").value = "nM"; dsUnitChange();
+  // 8 rows (dose points) x 3 columns (replicates) = A1..H3
+  const cells = [];
+  for (let r = 0; r < 8; r++) for (let c = 0; c < 3; c++) cells.push(dsKey(r, c));
+  dsState.pending = new Set(cells);
+  dsState.editingId = null;
+  $("ds_g_name").value = "Group A";
+  $("ds_g_cell").value = "";
+  $("ds_g_adc").value = "";
+  $("ds_g_stock").value = "1000";
+  $("ds_g_top").value = "1000";
+  $("ds_g_fold").value = "3";
+  $("ds_g_mode").value = "spike"; dsGroupModeChange();
+  $("ds_g_factor").value = "10";
+  $("ds_g_overage").value = "1.1";
+  commitDoseGroup();
 }
 
 // selection is a rectangle from anchor to current cell
@@ -2964,6 +3085,7 @@ function commitDoseGroup() {
       + "\n\nAdjust the dilution settings (stock, top, fold, or mode) and try again.");
     return;
   }
+  dsPushUndo();                              // snapshot state before this commit
   let committedId;
   if (editing) {
     Object.assign(editing, fields);          // keep id + color
@@ -2994,6 +3116,7 @@ function flashDoseGroupRow(id, verb) {
 }
 
 function removeDoseGroup(id) {
+  dsPushUndo();                              // snapshot state before this removal
   dsState.groups = dsState.groups.filter((g) => g.id !== id);
   renderDoseGrid();
   renderDoseGroups();
@@ -3038,7 +3161,10 @@ function renderDoseGroups() {
 function calcDosing() {
   renderDoseGrid();
   if (!dsState.groups.length) {
-    $("ds_out").innerHTML = placeholder("Paint a block of wells and add a group to see the dilution recipe.");
+    $("ds_out").innerHTML = placeholder(
+      "Paint a block of wells and add a group to see the dilution recipe. "
+      + "<b>Example:</b> an 8-point, 3-fold, triplicate series from a 1&nbsp;&micro;M stock "
+      + "gives 1000 &rarr; 0.46&nbsp;nM top-to-bottom &mdash; use <b>Load a starter plate</b> on the grid above to drop it in and adjust.");
     $("ds_table_wrap").innerHTML = "";
     $("ds_export_row").style.display = "none";
     return;
@@ -4036,6 +4162,23 @@ function initBindings() {
     dsFormChange(); calcDosing();
   };
   $("ds_import_file").onchange = importPlateDesign;
+  // #9 — keyboard affordances for the plate designer, active only while its panel
+  // is showing: Escape cancels a pending selection / abandons an edit; Ctrl/Cmd-Z
+  // undoes the last commit or removal. Ignored while typing in a text field so it
+  // never fights the browser's native undo in the group-form inputs.
+  document.addEventListener("keydown", (e) => {
+    const panel = $("panel-dosing");
+    if (!panel || !panel.classList.contains("active")) return;
+    const tag = (e.target && e.target.tagName || "").toLowerCase();
+    const typing = tag === "input" || tag === "textarea" || tag === "select";
+    if (e.key === "Escape") {
+      if (dsState.pending.size || dsState.editingId != null) { clearDosePending(); e.preventDefault(); }
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z") && !e.shiftKey && !typing) {
+      if (dsUndoStack.length) { dsUndo(); e.preventDefault(); }
+    }
+  });
   $("cj_route").onchange = () => conjPreset($("cj_route").value);
   $("nd_e280").oninput = updateCF; $("nd_elmax").oninput = updateCF;
 }
@@ -4059,6 +4202,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   calcUV(); calcEllman(); calcYield(); calcSec(); calcFreeDrug();
   $("ds_well").value = ADC.plateWellVolume(dsPlate());
   dsGroupModeChange(); dsUnitChange(); calcDosing();
+  updateUndoAffordance();
   await hydrateDesignStore();
   renderDesignList();
   await loadRegistry(); renderRegistry();
