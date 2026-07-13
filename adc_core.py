@@ -1137,6 +1137,37 @@ def distribution_dispersion(weights: Mapping[int, float]) -> dict:
     return {"mean": mean, "variance": variance, "sd": variance ** 0.5}
 
 
+def measured_dar_distribution(species: Mapping[int, float]) -> dict:
+    """Normalise a *measured* drug-load distribution and report its moments.
+
+    Unlike ``predict_dar_distribution`` (a binomial site-occupancy model),
+    this takes the abundances actually measured for each DAR species — HIC or
+    LC-MS peak percentages or areas keyed by integer drug load — and returns
+    the normalised fractions plus the population mean/variance/SD. No
+    distributional assumption is made: the mean DAR is the abundance-weighted
+    average of the observed species, so a skewed or bimodal native-cysteine
+    profile is reported exactly as measured.
+
+    `species` maps drug count k -> abundance (any consistent unit; need not
+    sum to 100). Abundances must be non-negative and their total positive.
+    Returns ``{fractions: {k: fraction}, mean_dar, variance, sd, total}``.
+    """
+    if any(w < 0 for w in species.values()):
+        raise ValueError("Species abundances must be non-negative")
+    total = sum(species.values())
+    if total <= 0:
+        raise ValueError("Total abundance must be > 0")
+    fractions = {k: w / total for k, w in species.items()}
+    disp = distribution_dispersion(species)
+    return {
+        "fractions": fractions,
+        "mean_dar": disp["mean"],
+        "variance": disp["variance"],
+        "sd": disp["sd"],
+        "total": total,
+    }
+
+
 def predict_dar_distribution(
     n_sites: int,
     p_site: float | None = None,
@@ -1243,6 +1274,71 @@ def dar_lcms_reduced_uncertainty(
 
 
 # ==========================================================================
+# 9c. Product-quality aggregates: SEC purity & free-drug  (spec §9c)
+# ==========================================================================
+def sec_purity(
+    auc_monomer: float,
+    auc_hmw: float,
+    auc_lmw: float = 0.0,
+) -> dict:
+    """Size-exclusion chromatography (SEC) purity from integrated peak areas.
+
+    SEC separates by hydrodynamic size into three classes:
+
+    * **monomer** — the intact one-antibody species (the product);
+    * **HMW** — high-molecular-weight species (dimers/aggregates), eluting
+      earlier (larger); a key stability- and immunogenicity-related CQA;
+    * **LMW** — low-molecular-weight species (fragments/clips), eluting later.
+
+    Percentages are area-normalised (``AUC_i / sum AUC * 100``), the standard
+    SEC reporting convention. Areas must be non-negative; the total must be
+    positive.
+    """
+    for label, v in (("monomer", auc_monomer), ("HMW", auc_hmw), ("LMW", auc_lmw)):
+        if v < 0:
+            raise ValueError(f"SEC {label} peak area must be non-negative")
+    total = auc_monomer + auc_hmw + auc_lmw
+    if total <= 0:
+        raise ValueError("Total SEC peak area must be > 0")
+    return {
+        "pct_monomer": auc_monomer / total * 100.0,
+        "pct_hmw": auc_hmw / total * 100.0,
+        "pct_lmw": auc_lmw / total * 100.0,
+        "total": total,
+    }
+
+
+def free_drug_percent(
+    free_drug: float,
+    conjugated_drug: float,
+) -> dict:
+    """Fraction of drug present as unconjugated (free) small molecule.
+
+    Free (unconjugated) drug is a safety-critical CQA — it is the cytotoxin
+    not covalently attached to the antibody, typically measured by
+    reversed-phase HPLC or an SEC/UPLC free-drug method. ``free_drug`` and
+    ``conjugated_drug`` are amounts in matching units (molar concentration,
+    peak area, or mass); the percentage is unit-independent:
+
+        %free = free / (free + conjugated) * 100
+
+    Both inputs must be non-negative and their sum positive.
+    """
+    if free_drug < 0:
+        raise ValueError("Free-drug amount must be non-negative")
+    if conjugated_drug < 0:
+        raise ValueError("Conjugated-drug amount must be non-negative")
+    total = free_drug + conjugated_drug
+    if total <= 0:
+        raise ValueError("Total drug amount must be > 0")
+    return {
+        "pct_free": free_drug / total * 100.0,
+        "pct_conjugated": conjugated_drug / total * 100.0,
+        "total": total,
+    }
+
+
+# ==========================================================================
 # 10. Embedded dye / payload library  (spreadsheet cols L-R)
 # ==========================================================================
 # name, mw (g/mol), e_lmax (M^-1 cm^-1), cf280 (280 nm correction factor),
@@ -1279,6 +1375,153 @@ def get_dye(name: str) -> dict | None:
     for d in DYE_LIBRARY:
         if d["name"].lower() == key:
             return d
+    return None
+
+
+# ==========================================================================
+# 9c. Payload–linker reference library  (spec §9c)
+# ==========================================================================
+# Extinction coefficients for the common ADC cytotoxic payloads, for use in
+# DAR-by-UV (drug ελmax + its ε280 to correct the mAb A280 contribution).
+# ε in M⁻¹cm⁻¹; MW in g/mol; λmax in nm.
+#
+# Each entry separates the FREE payload from the CONJUGATED drug-linker
+# construct, because published ε values are reported for one or the other and
+# the two are NOT interchangeable. Fields that are not firmly citable are
+# None — the UI must show "ε not in library; measure or enter manually" rather
+# than substitute a guessed value into a logged DAR.
+#
+#   sourced=True  -> at least one ε pair (free OR conj) is a cited value.
+#   sourced=False -> reference entry: MW/λmax/class only; all ε are None.
+#
+# Absorptivity convention: eps_lmax_* is at the entry's own lambda_max.
+PAYLOAD_LIBRARY: list[dict] = [
+    {
+        "name": "vc-MMAE",
+        "cls": "auristatin",
+        "mw_free": 717.98,          # MMAE free drug
+        "mw_conj": 1316.63,         # mc-vc-PAB-MMAE drug-linker
+        "lambda_max": 248,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": 15900.0,
+        "eps280_conj": 1500.0,
+        "sourced": True,
+        "source": "Cruz & Kayser DAR-by-UV/Vis (drug-linker 15,900@248 / 1,500@280); Cancers 2009 11(6):870.",
+    },
+    {
+        "name": "DM1",
+        "cls": "maytansinoid",
+        "mw_free": 738.5,           # SMCC-DM1 mertansine
+        "mw_conj": None,
+        "lambda_max": 252,
+        "eps_lmax_free": 26790.0,
+        "eps280_free": 0.0,         # DM1 280 contribution treated as negligible; mAb ratio εab252/εab280≈0.378
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": True,
+        "source": "US Patent 7,666,414 (deJ591-DM1, Ex.17): εDM1@252=26,790; mAb ratio 0.378.",
+    },
+    {
+        "name": "DM4",
+        "cls": "maytansinoid",
+        "mw_free": 780.5,           # SPDB-DM4 ravtansine
+        "mw_conj": None,
+        "lambda_max": 252,
+        "eps_lmax_free": 28044.0,
+        "eps280_free": 5700.0,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": True,
+        "source": "US Patent 10,780,179 (anti-EGFR-SPDB-DM4): 28,044@252 / 5,700@280.",
+    },
+    {
+        "name": "mc-MMAF",
+        "cls": "auristatin",
+        "mw_free": 731.95,          # MMAF free drug
+        "mw_conj": 1011.6,          # mc-MMAF drug-linker (approx)
+        "lambda_max": 248,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": False,
+        "source": "Reference only — auristatin λmax≈248; ε not in library (measure or enter manually).",
+    },
+    {
+        "name": "deruxtecan (DXd)",
+        "cls": "camptothecin",
+        "mw_free": 493.5,           # DXd payload
+        "mw_conj": 1034.0,          # deruxtecan drug-linker (approx)
+        "lambda_max": 370,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": False,
+        "source": "Reference only — exatecan-derivative camptothecin, DAR by UV at 370 & 280 nm (US 12,491,259); ε not in library.",
+    },
+    {
+        "name": "SN-38",
+        "cls": "camptothecin",
+        "mw_free": 392.4,
+        "mw_conj": None,
+        "lambda_max": 370,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": False,
+        "source": "Reference only — camptothecin λmax≈370; ε not in library (measure or enter manually).",
+    },
+    {
+        "name": "tesirine (SG3199)",
+        "cls": "PBD dimer",
+        "mw_free": 558.6,           # SG3199 free PBD dimer
+        "mw_conj": 1502.0,          # tesirine drug-linker (approx)
+        "lambda_max": 320,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": False,
+        "source": "Reference only — pyrrolobenzodiazepine dimer λmax≈320; ε not in library.",
+    },
+    {
+        "name": "calicheamicin γ1",
+        "cls": "enediyne",
+        "mw_free": 1368.4,
+        "mw_conj": None,
+        "lambda_max": None,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": False,
+        "source": "Reference only — enediyne; ε not in library (measure or enter manually).",
+    },
+    {
+        "name": "\u03b1-amanitin",
+        "cls": "amatoxin",
+        "mw_free": 918.97,
+        "mw_conj": None,
+        "lambda_max": 305,
+        "eps_lmax_free": None,
+        "eps280_free": None,
+        "eps_lmax_conj": None,
+        "eps280_conj": None,
+        "sourced": False,
+        "source": "Reference only — amatoxin λmax≈305; ε not in library (measure or enter manually).",
+    },
+]
+
+
+def get_payload(name: str) -> dict | None:
+    """Case-insensitive lookup in the embedded payload-linker library."""
+    key = name.strip().lower()
+    for p in PAYLOAD_LIBRARY:
+        if p["name"].lower() == key:
+            return p
     return None
 
 
