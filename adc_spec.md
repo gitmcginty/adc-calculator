@@ -463,12 +463,88 @@ Other fixtures:
 - DAR distribution (cysteine, `d=2`) `n=4, feed_ratio=2.5, efficiency=0.8` → p_site=**0.25**, mean=**2.0**, variance=**3.0**, support **{0,2,4,6,8}**, P(DAR=2)=**0.421875**, P(DAR=0)=**0.31640625**
 - DAR distribution (cysteine, `d=2`) `n=4, p_site=0.5` → mean=**4.0**, variance=**4.0**, P(DAR=4)=**0.375**, P(DAR=0)=P(DAR=8)=**0.0625**
 - DAR distribution (lysine, `d=1`) `n=8, p_site=0.5` → mean=**4.0**, variance=**2.0**, support **{0..8}**, P(DAR=3)=**0.21875**
+- Measured DAR distribution `measured_dar_distribution({0:5, 2:35, 4:40, 6:15, 8:5})` → mean_dar=**3.6**, variance=**3.44**, sd=**1.854723699099141**, total=**100.0**, fractions[2]=**0.35**, fractions[4]=**0.40**; negative abundance or zero total → `ValueError`
 - DAR-UV uncertainty (Case B, σA280=σAλmax=0.01) → σ_DAR=**0.033701**; with ε terms (σε280_mAb=2030, σε280_LP=364.35, σελmax_LP=481.2) → σ_DAR=**0.137956** (ε-coefficient uncertainty dominates)
 - Physical bounds `check_physical_bounds`: clean `(dar=2.5, r=0.1, ε280=203000, ελmax=210000, conc=5)` → **[]** (no warnings); `dar=-1.2` → **[dar_negative]**; `dar=20` → **[dar_high]** (but `dar=16` → []); `r=-0.5` → **[r_negative]**; `r=60` → **[r_high]** (but `r=50` → []); `ε280=203000, ελmax=5000` → **[eps_inconsistent]** (but ε280==ελmax → []); `conc=-3` → **[conc_negative]**; collect-all: `(dar=-1, r=-0.5, ε280=1000, ελmax=100, conc={c1:-2,c2:5})` → **4 warnings** `{conc_negative, dar_negative, eps_inconsistent, r_negative}`
+- Payload library `PAYLOAD_LIBRARY`: **9 entries**; **3** with `sourced=True`
+  (vc-MMAE, DM1, DM4). `get_payload("vc-MMAE")` → `eps_lmax_conj=15900`,
+  `eps280_conj=1500`, `lambda_max=248`, `mw_conj=1316.63`, `cls="auristatin"`;
+  `get_payload("DM1")` → `eps_lmax_free=26790`, `eps280_free=0`, `lambda_max=252`;
+  `get_payload("DM4")` → `eps_lmax_free=28044`, `eps280_free=5700`;
+  `get_payload("mc-MMAF")` → `sourced=False`, `eps_lmax_conj=None`;
+  `get_payload("nonexistent")` → `None`.
+- SEC purity `sec_purity(1900, 62, 38)` → %monomer=**95.0**, %HMW=**3.1**, %LMW=**1.9**, total=**2000** (sum = 100); two-peak `sec_purity(4900, 100)` → %monomer=**98.0**, %HMW=**2.0**, %LMW=**0.0**; negative area or zero total → `ValueError`
+- Free-drug `free_drug_percent(1.5, 598.5)` → %free=**0.25**, %conjugated=**99.75**, total=**600**; negative amount or zero total → `ValueError`
 
 Tolerance for all: relative 1e-6.
 
 ---
+
+## 9c. Payload–linker reference library (`PAYLOAD_LIBRARY`, `get_payload`)
+
+Extinction coefficients for the common ADC cytotoxic payloads, for DAR-by-UV
+(the drug's `ελmax` plus its `ε280`, the latter used to correct the mAb A280
+contribution). `ε` in M⁻¹cm⁻¹, `MW` in g/mol, `λmax` in nm.
+
+Each entry carries: `name`, `cls` (payload class), `mw_free`, `mw_conj`,
+`lambda_max`, `eps_lmax_free`, `eps280_free`, `eps_lmax_conj`, `eps280_conj`,
+`sourced` (bool), `source` (citation string).
+
+**FREE vs CONJUGATED are kept distinct.** Published ε are reported for either
+the free payload or the drug-linker construct, and the two are NOT
+interchangeable; a field that is not firmly citable is `null`/`None`. When an
+entry's needed ε is null the UI must show "ε not in library — measure or enter
+manually" and must NOT substitute a guessed value into a logged DAR.
+`sourced=True` means at least one ε pair (free or conjugated) is a cited value;
+`sourced=False` is a reference entry (MW/λmax/class only, all ε null).
+
+`get_payload(name)` is a case-insensitive exact-name lookup returning the entry
+dict or `None`.
+
+Firmly-sourced ε (as of this build):
+- **vc-MMAE** (mc-vc-PAB-MMAE, auristatin, λmax 248): conjugated ελmax=15,900,
+  ε280=1,500. Cruz & Kayser DAR-by-UV/Vis, Cancers 2009 11(6):870.
+- **DM1** (maytansinoid, λmax 252): free ελmax=26,790, ε280=0 (280 contribution
+  treated as negligible; standard mAb correction ratio εab252/εab280≈0.378).
+  US 7,666,414 Ex.17.
+- **DM4** (SPDB-DM4, maytansinoid, λmax 252): free ελmax=28,044, ε280=5,700.
+  US 10,780,179.
+
+Reference-only entries (`sourced=False`, ε null): mc-MMAF, deruxtecan (DXd),
+SN-38, tesirine (SG3199), calicheamicin γ1, α-amanitin.
+
+---
+
+## 9d. Product-quality aggregates: SEC purity & free-drug (`sec_purity`, `free_drug_percent`)
+
+Two area-/amount-normalised critical quality attributes reported for every ADC lot.
+
+**SEC purity (`sec_purity`).** Size-exclusion chromatography separates by
+hydrodynamic size into three classes: **monomer** (the intact one-antibody
+product), **HMW** (high-molecular-weight dimers/aggregates, eluting earlier
+because they are larger — a stability- and immunogenicity-related CQA), and
+**LMW** (low-molecular-weight fragments/clips, eluting later). Percentages are
+area-normalised, the standard SEC reporting convention:
+
+    %class_i = AUC_i / (AUC_monomer + AUC_HMW + AUC_LMW) × 100
+
+`auc_lmw` defaults to 0 for two-peak (monomer/HMW-only) integration. All areas
+must be non-negative and the total positive, else `ValueError`. Returns
+`{pct_monomer, pct_hmw, pct_lmw, total}`.
+
+**Free-drug (`free_drug_percent`).** The fraction of payload present as
+unconjugated (free) small molecule — a safety-critical CQA, typically measured
+by reversed-phase HPLC or an SEC/UPLC free-drug method. Inputs are amounts in
+matching units (molar concentration, peak area, or mass); the percentage is
+unit-independent:
+
+    %free = free / (free + conjugated) × 100
+
+Both inputs non-negative, sum positive, else `ValueError`. Returns
+`{pct_free, pct_conjugated, total}`.
+
+Neither aggregate models a distribution — they are direct normalisations of
+measured integrals, so no binomial/site-occupancy assumptions apply.
 
 ## 10. Embedded dye/payload library
 
