@@ -83,8 +83,14 @@ nav.tabs button{background:none;border:none;padding:13px 12px;font-size:13px;cur
   border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;transition:color .12s}
 nav.tabs button:hover{color:var(--ink)}
 nav.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+/* Workflow-stage grouping: small muted captions chunk the flat row into
+ * Design -> Measure -> Plan -> Reference, with a faint separator between. */
+nav.tabs .tab-group{align-self:center;font-size:9.5px;font-weight:600;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--faint);padding:0 2px 0 6px;user-select:none}
+nav.tabs .tab-sep{align-self:center;width:1px;height:16px;background:var(--line);margin:0 4px}
 /* Visual break between the analytical calculators and the bench-planning tool. */
 nav.tabs .tab-div{align-self:center;width:1px;height:22px;background:var(--line);margin:0 8px 0 auto}
+@media(max-width:640px){nav.tabs .tab-group,nav.tabs .tab-sep{display:none}}
 svg.ic{width:1em;height:1em;flex:none;vertical-align:-0.14em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 button svg.ic{margin-right:.4em}
 nav.tabs button.bench{color:var(--accent);font-weight:600;display:inline-flex;align-items:center;gap:.4em;
@@ -109,6 +115,20 @@ main{padding:var(--s3) 0 64px}
 .segmented button:first-child{border-left:none}
 .segmented button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .segnote{font-size:11.5px;color:var(--faint);margin-left:12px;align-self:center}
+/* AB-1: recommended-default method picker. UV reads as the primary method
+ * (large, high-contrast heading); HIC/LC-MS are demoted behind a compact,
+ * lower-contrast switch to its right — progressive disclosure over a fork. */
+.method-picker{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s3);
+  flex-wrap:wrap;margin-bottom:var(--s3)}
+.method-picker .mp-lead{display:flex;flex-direction:column;gap:3px;min-width:0}
+.method-picker .mp-kicker{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--faint)}
+.method-picker .mp-active{font-size:18px;font-weight:600;color:var(--ink);letter-spacing:-.01em;line-height:1.15}
+.method-picker .mp-alt{display:flex;align-items:center;gap:8px}
+.method-picker .mp-alt-label{font-size:11px;color:var(--faint);font-weight:500}
+.segmented.compact{margin-bottom:0}
+.segmented.compact button{padding:6px 13px;font-size:12px;color:var(--faint)}
+.segmented.compact button:hover{color:var(--muted)}
+.segmented.compact button.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
 .method{display:none}
 .method.active{display:block}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:var(--s2) var(--s3)}
@@ -148,6 +168,26 @@ details.advanced[open]>summary{border-bottom:1px solid var(--line)}
 .rrow.primary{padding:6px 0 14px}
 .rrow.primary .k{align-self:center}
 .rrow.primary .v{font-size:30px;font-weight:600;color:var(--accent);line-height:1.1}
+/* AB-3: result-dominant hero card. The primary metric leads the result column
+ * at a large type scale; severity recolors the entire card (Von Restorff) so a
+ * flagged value is the salient element, not a small inline note. */
+.result-hero{border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:0 0 var(--s2);
+  background:var(--panel);transition:border-color .12s,background .12s}
+.result-hero .rh-head{display:flex;align-items:center;gap:7px;margin-bottom:4px}
+.result-hero .rh-label{font-size:11px;text-transform:uppercase;letter-spacing:.07em;font-weight:600;color:var(--faint)}
+.result-hero .rh-ic{font-size:14px;line-height:1}
+.result-hero .rh-value{font-family:var(--mono);font-size:34px;font-weight:600;line-height:1.05;color:var(--accent);
+  letter-spacing:-.02em;word-break:break-word}
+.result-hero .rh-value .rh-unit{font-size:16px;font-weight:500;color:var(--muted);margin-left:8px;letter-spacing:0}
+.result-hero .rh-flag{margin-top:12px}
+.result-hero .rh-flag .res-note,.result-hero .rh-flag .res-warn{margin-top:0}
+.result-hero.ok{border-left:3px solid var(--accent)}
+.result-hero.warn{border-color:color-mix(in srgb,var(--warn) 45%,var(--line));border-left:3px solid var(--warn);
+  background:var(--warn-soft,color-mix(in srgb,var(--warn) 8%,transparent))}
+.result-hero.warn .rh-value,.result-hero.warn .rh-ic{color:var(--warn)}
+.result-hero.danger{border-color:color-mix(in srgb,var(--danger) 55%,var(--line));border-left:3px solid var(--danger);
+  background:var(--danger-soft)}
+.result-hero.danger .rh-value,.result-hero.danger .rh-ic,.result-hero.danger .rh-label{color:var(--danger)}
 .placeholder{color:var(--faint);font-size:13px;text-align:center;padding:40px 20px}
 .note{background:var(--result);border:1px solid var(--line);border-left:2px solid var(--accent);padding:11px 15px;
   border-radius:0 8px 8px 0;font-size:12.5px;color:var(--muted);margin-top:var(--s2);line-height:1.6}
@@ -332,12 +372,19 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 </div>
 </div></header>
 <nav class="tabs" id="tabs" role="tablist" aria-label="Calculator sections">
-  <button data-tab="dar" class="active">DAR</button>
+  <span class="tab-group" aria-hidden="true">Design</span>
   <button data-tab="conj">Conjugation Designer</button>
-  <button data-tab="ellman">Ellman (free thiols)</button>
-  <button data-tab="yield">Yield &amp; Formulation</button>
-  <button data-tab="quality">Product Quality</button>
   <button data-tab="dyes">Dye / Payload Library</button>
+  <span class="tab-sep" aria-hidden="true"></span>
+  <span class="tab-group" aria-hidden="true">Measure</span>
+  <button data-tab="dar" class="active">DAR</button>
+  <button data-tab="ellman">Ellman (free thiols)</button>
+  <button data-tab="quality">Product Quality</button>
+  <span class="tab-sep" aria-hidden="true"></span>
+  <span class="tab-group" aria-hidden="true">Plan</span>
+  <button data-tab="yield">Yield &amp; Formulation</button>
+  <span class="tab-sep" aria-hidden="true"></span>
+  <span class="tab-group" aria-hidden="true">Reference</span>
   <button data-tab="registry">ADC Registry</button>
   <button data-tab="definitions">Definitions</button>
   <span class="tab-div" aria-hidden="true"></span>
@@ -362,11 +409,20 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 <section class="panel active" id="panel-dar">
   <div class="card">
     <h2>Drug-to-antibody ratio (DAR)</h2>
-    <p class="desc">Determine average DAR by any of three orthogonal methods. Pick the method you ran &mdash; the inputs and formula update to match.</p>
-    <div class="segmented" id="dar_methods">
-      <button data-method="uv" class="active" onclick="setDarMethod('uv')">UV/Vis</button>
-      <button data-method="hic" onclick="setDarMethod('hic')">HIC</button>
-      <button data-method="lcms" onclick="setDarMethod('lcms')">LC-MS</button>
+    <p class="desc">Average DAR by UV/Vis spectrophotometry &mdash; the most common bench method, and the recommended starting point. Ran HIC or LC-MS instead? Switch on the right; the inputs and formula follow.</p>
+    <div class="method-picker">
+      <div class="mp-lead">
+        <span class="mp-kicker">Method</span>
+        <span class="mp-active" id="dar_active_name">UV/Vis spectrophotometry</span>
+      </div>
+      <div class="mp-alt">
+        <span class="mp-alt-label">Switch</span>
+        <div class="segmented compact" id="dar_methods" role="group" aria-label="DAR method">
+          <button data-method="uv" class="active" onclick="setDarMethod('uv')" title="Recommended default">UV/Vis</button>
+          <button data-method="hic" onclick="setDarMethod('hic')">HIC</button>
+          <button data-method="lcms" onclick="setDarMethod('lcms')">LC-MS</button>
+        </div>
+      </div>
     </div>
 
     <!-- ---- UV/Vis method ---- -->
@@ -2151,6 +2207,22 @@ function nrow(k, value, unit, cls = "", digits = 3) {
   return { html: `<div class="rrow ${cls}"><span class="k">${k}</span>${vcell}</div>`, neg };
 }
 function resNote(msg) { return `<div class="res-note">${msg}</div>`; }
+/* AB-3: result-dominant hero card. Renders the primary metric large at the top
+ * of a result column; the whole card treatment escalates with severity so an
+ * out-of-range or impossible value cannot be scanned past.
+ *   opts = { label, value, unit?, severity?: "ok"|"warn"|"danger", flag?: html }
+ * value/label are trusted (built from fmt() + fixed strings); flag is prebuilt
+ * HTML from resNote/boundsNotes (already escaped). */
+function resultHero(opts) {
+  const sev = opts.severity === "danger" ? "danger" : opts.severity === "warn" ? "warn" : "ok";
+  const icon = sev === "ok" ? "" : `<span class="rh-ic" aria-hidden="true">&#9888;</span>`;
+  const unit = opts.unit ? `<span class="rh-unit">${opts.unit}</span>` : "";
+  return `<div class="result-hero ${sev}">`
+    + `<div class="rh-head">${icon}<span class="rh-label">${opts.label}</span></div>`
+    + `<div class="rh-value">${opts.value}${unit}</div>`
+    + (opts.flag ? `<div class="rh-flag">${opts.flag}</div>` : "")
+    + `</div>`;
+}
 /* Render physical-bounds warnings from ADC.checkPhysicalBounds() as an amber
  * advisory block. Messages come from the pure core (fixed strings, no user
  * input) but are escaped defensively. Returns "" when there is nothing to flag. */
@@ -2189,11 +2261,14 @@ function toggleTheme() {
 }
 
 // ---- DAR method segmented control ----
+const DAR_METHOD_NAMES = { uv: "UV/Vis spectrophotometry", hic: "HIC", lcms: "LC-MS (intact / reduced)" };
 function setDarMethod(m) {
   document.querySelectorAll("#dar_methods button").forEach((b) =>
     b.classList.toggle("active", b.dataset.method === m));
   document.querySelectorAll("#panel-dar .method").forEach((el) =>
     el.classList.toggle("active", el.id === "method-" + m));
+  const nameEl = $("dar_active_name");
+  if (nameEl) nameEl.textContent = DAR_METHOD_NAMES[m] || m;
 }
 
 // ---- Tabs (ARIA tablist with roving tabindex + arrow-key navigation) ----
@@ -2275,15 +2350,18 @@ function calcUV() {
     // Physical quantities that must be non-negative — flag any that aren't.
     const darNeg = Number.isFinite(dar) && dar < 0;
     const rMgml = nrow("[ADC]", p.concMgml, "mg/mL", "", 4);
-    const rUM = nrow("[ADC]", p.concUM, "&micro;M", "primary", 3);
+    const rUM = nrow("[ADC]", p.concUM, "&micro;M", "", 3);
     const rUnk = nrow("[ADC] if payload &epsilon; unknown", cUnk, "mg/mL", "", 4);
     const anyNeg = darNeg || rMgml.neg || rUM.neg || rUnk.neg;
     const boundsW = ADC.checkPhysicalBounds({
       dar: dar, r: almax / a280, eps280: e280Mab, epsLmax: elmaxMab,
       concentrations: { "[ADC] (mg/mL)": p.concMgml, "[ADC] (\u00b5M)": p.concUM }
     });
+    const heroFlag = (anyNeg ? resNote("Negative result &mdash; check that A280 and A\u03bbmax aren't swapped, and that neither absorbance was baseline-subtracted below zero.") : "")
+      + boundsNotes(boundsW);
+    const heroSev = anyNeg ? "danger" : (boundsW && boundsW.length ? "warn" : "ok");
     out.innerHTML = "<h3>Results</h3>"
-      + `<div class="rrow primary"><span class="k">DAR (drug : antibody)</span><span class="v${darNeg ? " neg" : ""}">${darCell}</span></div>`
+      + resultHero({ label: "DAR (drug : antibody)", value: darCell, severity: heroSev, flag: heroFlag })
       + ciRow
       + scatterRow
       + rrow("&epsilon;280 antibody (molar)", fmt(e280Mab, 0) + " M&#8315;&#185;cm&#8315;&#185;")
@@ -2292,9 +2370,7 @@ function calcUV() {
       + rrow("&epsilon;280 ADC (mass)", fmt(p.eps280AdcMass, 4) + " (mg/mL&middot;cm)&#8315;&#185;")
       + rMgml.html
       + rUM.html
-      + rUnk.html
-      + (anyNeg ? resNote("Negative result &mdash; check that A280 and A\u03bbmax aren't swapped, and that neither absorbance was baseline-subtracted below zero.") : "")
-      + boundsNotes(boundsW);
+      + rUnk.html;
   } catch (e) { out.innerHTML = placeholder("Enter A280 and A\u03bbmax"); }
 }
 function uvPreset(kind) {
@@ -2394,12 +2470,13 @@ function calcEllman() {
     const tNeg = Number.isFinite(t) && t < 0;
     const blanked = b412 > 0 || b280 > 0;
     const boundsW = ADC.checkPhysicalBounds({ concentrations: { "Free thiols per antibody": t } });
-    $("el_out").innerHTML = "<h3>Results</h3>"
-      + `<div class="rrow primary"><span class="k">Free thiols per antibody</span><span class="v${tNeg ? " neg" : ""}">${fmt(t, 3)}</span></div>`
-      + rrow("Interpretation", tNeg ? "&mdash;" : t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction")
-      + (blanked ? rrow("Blank-subtracted", "A412 &minus;" + fmt(b412, 4) + ", A280 &minus;" + fmt(b280, 4)) : "")
-      + (tNeg ? resNote("Negative thiol count &mdash; check that A412 and A280 aren't swapped or baseline-subtracted below zero.") : "")
+    const elFlag = (tNeg ? resNote("Negative thiol count &mdash; check that A412 and A280 aren't swapped or baseline-subtracted below zero.") : "")
       + boundsNotes(boundsW);
+    $("el_out").innerHTML = "<h3>Results</h3>"
+      + resultHero({ label: "Free thiols per antibody", value: fmt(t, 3),
+                     severity: tNeg ? "danger" : (boundsW && boundsW.length ? "warn" : "ok"), flag: elFlag })
+      + rrow("Interpretation", tNeg ? "&mdash;" : t < 1 ? "sub-stoichiometric" : t < 3 ? "partial reduction" : "extensive reduction")
+      + (blanked ? rrow("Blank-subtracted", "A412 &minus;" + fmt(b412, 4) + ", A280 &minus;" + fmt(b280, 4)) : "");
   } catch (e) { $("el_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
 
@@ -2409,11 +2486,12 @@ function calcSec() {
     const r = ADC.secPurity(num("sec_mono"), num("sec_hmw"), num("sec_lmw") || 0);
     const hmwHigh = r.pctHmw > 5;   // typical release spec flags aggregate above ~5%
     $("sec_out").innerHTML = "<h3>Results</h3>"
-      + `<div class="rrow primary"><span class="k">Monomer</span><span class="v">${fmt(r.pctMonomer, 2)} %</span></div>`
+      + resultHero({ label: "Monomer", value: fmt(r.pctMonomer, 2), unit: " %",
+                     severity: hmwHigh ? "warn" : "ok",
+                     flag: hmwHigh ? resNote("HMW &gt; 5% &mdash; aggregate above a typical release limit; confirm against your product specification.") : "" })
       + `<div class="rrow"><span class="k">HMW (aggregate)</span><span class="v${hmwHigh ? " neg" : ""}">${fmt(r.pctHmw, 2)} %</span></div>`
       + rrow("LMW (fragments)", fmt(r.pctLmw, 2) + " %")
-      + rrow("Total area", fmt(r.total, 1))
-      + (hmwHigh ? resNote("HMW &gt; 5% &mdash; aggregate above a typical release limit; confirm against your product specification.") : "");
+      + rrow("Total area", fmt(r.total, 1));
   } catch (e) { $("sec_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
 function calcFreeDrug() {
@@ -2421,10 +2499,11 @@ function calcFreeDrug() {
     const r = ADC.freeDrugPercent(num("fd_free"), num("fd_conj"));
     const high = r.pctFree > 2;   // free-drug release limits are commonly a low single-digit %
     $("fd_out").innerHTML = "<h3>Results</h3>"
-      + `<div class="rrow primary"><span class="k">Free drug</span><span class="v${high ? " neg" : ""}">${fmt(r.pctFree, 3)} %</span></div>`
+      + resultHero({ label: "Free drug", value: fmt(r.pctFree, 3), unit: " %",
+                     severity: high ? "warn" : "ok",
+                     flag: high ? resNote("Free drug &gt; 2% &mdash; above a typical release limit; confirm against your product specification.") : "" })
       + rrow("Conjugated drug", fmt(r.pctConjugated, 3) + " %")
-      + rrow("Total drug", fmt(r.total, 3))
-      + (high ? resNote("Free drug &gt; 2% &mdash; above a typical release limit; confirm against your product specification.") : "");
+      + rrow("Total drug", fmt(r.total, 3));
   } catch (e) { $("fd_out").innerHTML = "<h3>Results</h3>" + rrow("Error", e.message); }
 }
 
@@ -2455,7 +2534,10 @@ function calcHic() {
       dar = ADC.darHIC(map); frac = ADC.darSpeciesFractions(map);
     }
     const disp = ADC.distributionDispersion(map);
-    let html = "<h3>Results</h3>" + rrow("Average DAR", fmt(dar, 3), "primary")
+    const hicNeg = Number.isFinite(dar) && dar < 0;
+    let html = "<h3>Results</h3>"
+      + resultHero({ label: "Average DAR", value: fmt(dar, 3), severity: hicNeg ? "danger" : "ok",
+                     flag: hicNeg ? resNote("Negative average DAR &mdash; check that peak areas are non-negative.") : "" })
       + corrRow
       + rrow("Load heterogeneity (SD, by area)", "&plusmn; " + fmt(disp.sd, 3) + " drugs")
       + "<h3 style='margin-top:14px'>Species distribution" + (correct ? " (molar)" : "") + "</h3>";
@@ -2480,7 +2562,7 @@ function calcDarDist() {
       res = ADC.predictDarDistribution(n, { feedRatio: num("pd_feed"), efficiency: num("pd_eff"), drugsPerSite: d });
     }
     let html = "<h3>Results</h3>"
-      + rrow("Mean DAR", fmt(res.meanDar, 3), "primary")
+      + resultHero({ label: "Mean DAR", value: fmt(res.meanDar, 3), severity: "ok" })
       + rrow("Site occupancy p", fmt(res.pSite, 4))
       + rrow("Drugs per reacted site", String(res.drugsPerSite))
       + rrow("Max possible DAR", String(res.maxDar))
@@ -2527,7 +2609,7 @@ function calcMeasuredDist() {
     const species = parseMeasuredDist(raw);
     const m = ADC.measuredDarDistribution(species);
     let html = "<h3>Measured distribution</h3>"
-      + rrow("Mean DAR (measured)", fmt(m.meanDar, 3), "primary")
+      + resultHero({ label: "Mean DAR (measured)", value: fmt(m.meanDar, 3), severity: "ok" })
       + rrow("Distribution SD", "&plusmn; " + fmt(m.sd, 3) + " drugs")
       + rrow("Variance", fmt(m.variance, 4))
       + rrow("Total abundance", fmt(m.total, 3));
@@ -2600,7 +2682,11 @@ function calcLcms() {
         + rrow(label + " mean (drugs/chain)", fmt(s.mean, 4))
         + rrow(label + " load SD (per chain)", "&plusmn; " + fmt(sd, 4))
         + rrow(label + " contribution (2&times;mean)", fmt(s.contribution, 4));
-      html = rrow("DAR", fmt(corr ? darC : bd.dar, 3) + " &plusmn; " + fmt(u.sigmaDar, 3), "primary")
+      const lcDar = corr ? darC : bd.dar;
+      const lcNeg = Number.isFinite(lcDar) && lcDar < 0;
+      html = resultHero({ label: "DAR", value: fmt(lcDar, 3) + " &plusmn; " + fmt(u.sigmaDar, 3),
+                          severity: lcNeg ? "danger" : "ok",
+                          flag: lcNeg ? resNote("Negative DAR &mdash; check that intensities are non-negative.") : "" })
         + (corr ? rrow("Uncorrected DAR", fmt(bd.dar, 3)) : "")
         + rrow("DAR 95% CI", fmt(u.ci95Low, 3) + " &ndash; " + fmt(u.ci95High, 3))
         + rrow("Mode", "denaturing + reducing" + (corr ? ", response-corrected" : ""))
@@ -2614,7 +2700,9 @@ function calcLcms() {
     } else {
       const dar = ADC.darLcmsIntact(toMap(lcIntact));
       const darC = corr ? ADC.darLcmsIntactCorrected(toMap(lcIntact), toResponse(lcIntact)) : dar;
-      html = rrow("DAR", fmt(darC, 3), "primary")
+      const inNeg = Number.isFinite(darC) && darC < 0;
+      html = resultHero({ label: "DAR", value: fmt(darC, 3), severity: inNeg ? "danger" : "ok",
+                          flag: inNeg ? resNote("Negative DAR &mdash; check that intensities are non-negative.") : "" })
         + (corr ? rrow("Uncorrected DAR", fmt(dar, 3)) : "")
         + rrow("Mode", "non-reducing / native" + (corr ? ", response-corrected" : ""))
         + (corr ? resNote("Response-corrected DAR divides each species intensity by its relative MS response (signal per mole, reference species = 1) before averaging.") : "");
@@ -2628,21 +2716,24 @@ function calcYield() {
   const start = $("yl_start").value.trim(), target = $("yl_target").value.trim();
   const y = ADC.yieldAndFormulation(num("yl_conc"), num("yl_vol"), num("yl_mw"),
     start === "" ? null : parseFloat(start), target === "" ? null : parseFloat(target));
-  const rMass = nrow("Recovered mass", y.recoveredMassMg, "mg", "primary", 3);
-  const rMol = nrow("Molar amount", y.molarAmountNmol, "nmol", "", 2);
-  let html = "<h3>Results</h3>" + rMass.html + rMol.html;
-  let ylNeg = rMass.neg || rMol.neg;
+  const massNeg = Number.isFinite(y.recoveredMassMg) && y.recoveredMassMg < 0;
+  const molNeg = Number.isFinite(y.molarAmountNmol) && y.molarAmountNmol < 0;
+  let ylNeg = massNeg || molNeg;
+  const boundsW = ADC.checkPhysicalBounds({ concentrations: {
+    "Recovered mass (mg)": y.recoveredMassMg, "Molar amount (nmol)": y.molarAmountNmol
+  } });
+  const ylFlag = (ylNeg ? resNote("Negative result &mdash; check that concentration, volume, and MW are all positive.") : "")
+    + boundsNotes(boundsW);
+  let html = "<h3>Results</h3>"
+    + resultHero({ label: "Recovered mass", value: fmt(y.recoveredMassMg, 3), unit: " mg",
+                   severity: massNeg ? "danger" : (boundsW && boundsW.length ? "warn" : "ok"), flag: ylFlag })
+    + nrow("Molar amount", y.molarAmountNmol, "nmol", "", 2).html;
   if (y.yieldPct !== null) html += rrow("Process yield", fmt(y.yieldPct, 1) + " %", "primary");
   if (y.vFinalML !== null) {
     html += rrow("Volume at target", fmt(y.vFinalML, 3) + " mL");
     html += rrow(y.vChangeML >= 0 ? "Diluent to add" : "Concentrate by",
       fmt(Math.abs(y.vChangeML), 3) + " mL");
   }
-  if (ylNeg) html += resNote("Negative result &mdash; check that concentration, volume, and MW are all positive.");
-  const boundsW = ADC.checkPhysicalBounds({ concentrations: {
-    "Recovered mass (mg)": y.recoveredMassMg, "Molar amount (nmol)": y.molarAmountNmol
-  } });
-  html += boundsNotes(boundsW);
   $("yl_out").innerHTML = html;
 }
 
