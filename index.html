@@ -379,6 +379,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 <div><h1>ADC Calculator</h1>
 <p>Centralized bioconjugation calculations for monoclonal antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
 <div style="flex:none;display:flex;gap:8px;align-items:center">
+<button class="info-link" id="definitions_link" onclick="showDefinitions()" aria-pressed="false" title="Definitions &amp; terms" style="display:inline-flex;align-items:center"><svg class="ic"><use href="#ic-info"/></svg>Definitions</button>
 <button class="info-link icon-only" id="theme_toggle" onclick="toggleTheme()" aria-label="Switch to light mode" title="Switch to light mode" style="display:inline-flex;align-items:center;justify-content:center"><svg class="ic" id="theme_toggle_icon"><use href="#ic-sun"/></svg></button>
 </div>
 </div></header>
@@ -397,7 +398,6 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
   <span class="tab-sep" aria-hidden="true"></span>
   <span class="tab-group" aria-hidden="true">Reference</span>
   <button data-tab="registry">ADC Registry</button>
-  <button data-tab="definitions">Definitions</button>
   <span class="tab-div" aria-hidden="true"></span>
   <button data-tab="dosing" class="bench" title="Plan an in vitro dosing experiment"><svg class="ic"><use href="#ic-flask"/></svg>In Vitro Dosing</button>
 </nav>
@@ -916,7 +916,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 </section>
 
 <!-- ============ DEFINITIONS / GLOSSARY ============ -->
-<section class="panel" id="panel-definitions">
+<section class="panel" id="panel-definitions" role="region" aria-label="Definitions and terms">
   <div class="card">
     <h2>Definitions &amp; terms</h2>
     <p class="desc">Concise reference for the quantities, assays, and design terms used throughout this calculator. Every formula named here is implemented once in the shared calculation core.</p>
@@ -2278,6 +2278,23 @@ function toggleTheme() {
   syncThemeToggle();
 }
 
+// ---- Definitions (header button; panel lives outside the tablist) ----
+function showDefinitions() {
+  document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+  const panel = $("panel-definitions");
+  if (panel) panel.classList.add("active");
+  // Clear the tablist's visual selection so no calculator tab looks active
+  // while the Definitions reference is showing.
+  document.querySelectorAll("#tabs button").forEach((b) => {
+    b.classList.remove("active");
+    b.setAttribute("aria-selected", "false");
+  });
+  const link = $("definitions_link");
+  if (link) link.setAttribute("aria-pressed", "true");
+  if (panel && typeof panel.scrollIntoView === "function")
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 // ---- DAR method segmented control ----
 const DAR_METHOD_NAMES = { uv: "UV/Vis spectrophotometry", hic: "HIC", lcms: "LC-MS (intact / reduced)" };
 function setDarMethod(m) {
@@ -2301,6 +2318,8 @@ function setDarMethod(m) {
     });
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
     $("panel-" + b.dataset.tab).classList.add("active");
+    const dl = $("definitions_link");
+    if (dl) dl.setAttribute("aria-pressed", "false");
     if (focus) b.focus();
   }
   tabs.forEach((b, i) => {
