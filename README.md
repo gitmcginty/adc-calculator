@@ -208,7 +208,7 @@ is shown in the footer badge.
 
 ## How to open the app
 
-Use the hosted version at **https://gitmcginty.github.io/adc-calculator/**, or
+Use the hosted version at **https://gitmcginty.github.io/Antibody-Drug-Conjugate-ADC-Calculator/**, or
 open `index.html` in any modern browser (double-click, or `File → Open`). It is
 fully self-contained — no server, no build, no internet connection required. The
 footer self-check badge confirms the calculation core is
