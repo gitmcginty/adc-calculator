@@ -995,6 +995,18 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
       <div class="gterm"><dt>Bench sheet</dt><dd>The printable step-by-step recipe generated from the plate: per-group serial-dilution tubes, transfer volumes, and the well map. Everything a scientist carries to the bench to execute the design.</dd></div>
     </dl>
 
+    <h3 class="glosshead">Serial-dilution recipe columns</h3>
+    <dl class="gloss">
+      <div class="gterm"><dt>Tube</dt><dd>The serial-dilution tube index (1 = most concentrated). Each tube supplies one concentration point; tube <em>n</em> is made by transferring from tube <em>n</em>&minus;1 and adding medium.</dd></div>
+      <div class="gterm"><dt>Final</dt><dd>The on-cell (in-well) concentration this tube produces after the per-well volume is added to the well &mdash; the concentration the cells actually experience.</dd></div>
+      <div class="gterm"><dt>Working</dt><dd>The concentration <em>in the tube</em> (the spike stock). For a spike dose it is prepared at spike-factor&nbsp;&times;&nbsp;final so a small add reaches the final in-well concentration; for a replace dose it equals the final.</dd></div>
+      <div class="gterm"><dt>Source</dt><dd>Where this tube's material comes from &mdash; the concentrated ADC stock for tube&nbsp;1, or a transfer from the previous tube for the rest of the ladder.</dd></div>
+      <div class="gterm"><dt>Transfer in</dt><dd>Volume (&micro;L) carried forward <em>into</em> this tube: aliquot of concentrated stock for tube&nbsp;1, or the carry-over from the previous tube thereafter.</dd></div>
+      <div class="gterm"><dt>Medium</dt><dd>Volume (&micro;L) of assay medium (diluent) added to this tube. Together with the transfer-in it sets the tube's dilution and its total volume.</dd></div>
+      <div class="gterm"><dt>Tube total</dt><dd>Total prepared volume (&micro;L) in the tube = transfer-in&nbsp;+&nbsp;medium. Sized to cover every replicate well plus the carry-forward transfer and pipetting overage.</dd></div>
+      <div class="gterm"><dt>Per well</dt><dd>The volume (&micro;L) delivered to each replicate well from this tube &mdash; the real dosing action at the bench. For a spike, it is added on top of the medium already in the well; for a replace, it swaps in after aspirating.</dd></div>
+    </dl>
+
     <div class="note"><b>One calculation core.</b> Each quantitative definition above corresponds to a function in <span style="font-family:var(--mono)">adc_core</span> (Python + JS + this page), pinned to shared golden values so the numbers never drift between platforms.</div>
   </div>
 </section>
@@ -1665,9 +1677,9 @@ const DYE_LIBRARY = [
   { name: "AF700", mw: 1400, e_lmax: 192000, cf280: 0.07, e280: 13440, lmax: 700, comment: null },
   { name: "AF750", mw: 1300, e_lmax: 240000, cf280: 0.04, e280: 9600, lmax: 750, comment: null },
   { name: "AF790", mw: 1750, e_lmax: 260000, cf280: 0.08, e280: 20800, lmax: 790, comment: null },
-  { name: "pHRodo deep red", mw: 1300, e_lmax: 140000, cf280: 0.33, e280: 46200, lmax: null, comment: "Dilute 1:1 with H2SO4 1M" },
-  { name: "pHRodo iFL Red", mw: 1000, e_lmax: 65000, cf280: 0.12, e280: 7800, lmax: 560, comment: "Dilute 1:1 with H2SO4 1M" },
-  { name: "pHRodo iFL Green", mw: 1000, e_lmax: 74500, cf280: 0.20, e280: 14900, lmax: null, comment: "Dilute 1:1 with H2SO4 1M" },
+  { name: "pHrodo Deep Red", mw: 1300, e_lmax: 140000, cf280: 0.33, e280: 46200, lmax: null, comment: "Dilute 1:1 with H2SO4 1M" },
+  { name: "pHrodo iFL Red", mw: 1000, e_lmax: 65000, cf280: 0.12, e280: 7800, lmax: 560, comment: "Dilute 1:1 with H2SO4 1M" },
+  { name: "pHrodo iFL Green", mw: 1000, e_lmax: 74500, cf280: 0.20, e280: 14900, lmax: null, comment: "Dilute 1:1 with H2SO4 1M" },
 ];
 
 function getDye(name) {
@@ -3356,8 +3368,8 @@ function calcDosing() {
   computed.forEach(({ g, plan, replicates }) => {
     const repWord = replicates === 1 ? "replicate" : "replicates";
     const dispenseNote = g.mode === "spike"
-      ? `Each replicate well receives <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> of working solution on top of the ${fmt(g.wellVolumeUL, 3)} &micro;L medium already in the well (&rarr; ${fmt(plan.finalWellVolumeUL, 3)} &micro;L final, ${fmt(plan.doseFactor, 0)}&times; dilution). The <b>Withdraw</b> column is that dose &times; ${replicates} ${repWord} &times; ${fmt(g.overage, 2)}&times; overage &mdash; the volume to pull from each tube. The surplus is pipetting dead-volume slack and is <b>not</b> delivered to the cells.`
-      : `Aspirate the existing medium and add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> of working solution to each replicate well. The <b>Withdraw</b> column is that volume &times; ${replicates} ${repWord} &times; ${fmt(g.overage, 2)}&times; overage &mdash; the amount to pull from each tube. The surplus is dead-volume slack, <b>not</b> delivered to the cells.`;
+      ? `<b>Per well</b> is the volume delivered to each replicate well: <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> of working solution spiked on top of the ${fmt(g.wellVolumeUL, 3)} &micro;L medium already in the well (&rarr; ${fmt(plan.finalWellVolumeUL, 3)} &micro;L final, ${fmt(plan.doseFactor, 0)}&times; dilution). Each tube is prepared with ${fmt(g.overage, 2)}&times; overage so there is enough to serve ${replicates} ${repWord} plus pipetting dead-volume without running short.`
+      : `<b>Per well</b> is the volume delivered to each replicate well: aspirate the existing medium, then add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> of working solution. Each tube is prepared with ${fmt(g.overage, 2)}&times; overage so there is enough to serve ${replicates} ${repWord} plus pipetting dead-volume without running short.`;
     // Explicit tube-1 callout: how much ADC stock to charge into the first tube.
     // Rendered as a highlighted box (not dim .sub text) so it's the first thing
     // the eye lands on — this is the number people ask for at the bench.
@@ -3375,14 +3387,14 @@ function calcDosing() {
       + `<div style="overflow-x:auto"><table class="dye"><thead><tr>`
       + `<th>Tube</th><th class="num">Final (${dsUnitLabel(unit)})</th><th class="num">Working (${dsUnitLabel(unit)})</th>`
       + `<th>Source</th><th class="num">Transfer in (&micro;L)</th><th class="num">Medium (&micro;L)</th>`
-      + `<th class="num">Tube total (&micro;L)</th><th class="num">Per well (&micro;L)</th><th class="num">Withdraw (&micro;L)</th></tr></thead><tbody>`;
+      + `<th class="num">Tube total (&micro;L)</th><th class="num">Per well (&micro;L)</th></tr></thead><tbody>`;
     plan.tubes.forEach((t) => {
       const fc = ADC.convertConcentration(t.finalConcUM, "uM", unit);
       const wc = ADC.convertConcentration(t.workingConcUM, "uM", unit);
       tbl += `<tr><td>${t.index}</td><td class="num">${fmt(fc, 4)}</td>`
         + `<td class="num">${fmt(wc, 4)}</td><td>${t.source}</td>`
         + `<td class="num">${fmt(t.transferInUL, 3)}</td><td class="num">${fmt(t.diluentUL, 3)}</td>`
-        + `<td class="num">${fmt(t.totalUL, 3)}</td><td class="num">${fmt(plan.vAddPerWellUL, 3)}</td><td class="num">${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
+        + `<td class="num">${fmt(t.totalUL, 3)}</td><td class="num">${fmt(plan.vAddPerWellUL, 3)}</td></tr>`;
     });
     tbl += "</tbody></table></div></div>";
   });
@@ -3454,18 +3466,18 @@ function buildBenchSheetHtml() {
 
     const repWordB = replicates === 1 ? "replicate" : "replicates";
     const dispenseNote = g.mode === "spike"
-      ? `Each replicate well receives <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> of working solution on top of the ${fmt(g.wellVolumeUL, 3)} µL medium already in the well (→ ${fmt(plan.finalWellVolumeUL, 3)} µL final, ${fmt(plan.doseFactor, 0)}× dilution). The Withdraw column is that dose × ${replicates} ${repWordB} × ${fmt(g.overage, 2)}× overage — the volume to pull from each tube. The surplus is pipetting dead-volume slack and is not delivered to the cells.`
-      : `Aspirate the existing medium and add <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> of working solution to each replicate well. The Withdraw column is that volume × ${replicates} ${repWordB} × ${fmt(g.overage, 2)}× overage — the amount to pull from each tube. The surplus is dead-volume slack, not delivered to the cells.`;
+      ? `Per well is the volume delivered to each replicate well: ${fmt(plan.vAddPerWellUL, 3)} µL of working solution spiked on top of the ${fmt(g.wellVolumeUL, 3)} µL medium already in the well (→ ${fmt(plan.finalWellVolumeUL, 3)} µL final, ${fmt(plan.doseFactor, 0)}× dilution). Each tube is prepared with ${fmt(g.overage, 2)}× overage so there is enough to serve ${replicates} ${repWordB} plus pipetting dead-volume without running short.`
+      : `Per well is the volume delivered to each replicate well: aspirate the existing medium, then add ${fmt(plan.vAddPerWellUL, 3)} µL of working solution. Each tube is prepared with ${fmt(g.overage, 2)}× overage so there is enough to serve ${replicates} ${repWordB} plus pipetting dead-volume without running short.`;
     recipes += `<div class="grp"><h3><span class="sw" style="background:${g.color}"></span>${esc(g.name)}`
       + `<span class="sub"> — ${esc(g.cell) || "cell line n/a"}${g.adc ? " · " + esc(g.adc) : ""}</span></h3>`
       + `<p class="sub">Prepare each tube to ${fmt(plan.vTubeTotalUL, 3)} µL, mix, transfer ${fmt(plan.vTransferUL, 3)} µL to the next tube. ${dispenseNote}</p>`
       + `<table class="info"><thead><tr><th>Tube</th><th>Final (${dsUnitLabel(unit)})</th><th>Working (${dsUnitLabel(unit)})</th>`
-      + `<th>Source</th><th>Transfer in (µL)</th><th>Medium (µL)</th><th>Tube total (µL)</th><th>Per well (µL)</th><th>Withdraw (µL)</th></tr></thead><tbody>`;
+      + `<th>Source</th><th>Transfer in (µL)</th><th>Medium (µL)</th><th>Tube total (µL)</th><th>Per well (µL)</th></tr></thead><tbody>`;
     plan.tubes.forEach((t) => {
       const fc = ADC.convertConcentration(t.finalConcUM, "uM", unit);
       const wc = ADC.convertConcentration(t.workingConcUM, "uM", unit);
       recipes += `<tr><td>${t.index}</td><td>${fmt(fc, 4)}</td><td>${fmt(wc, 4)}</td><td>${esc(t.source)}</td>`
-        + `<td>${fmt(t.transferInUL, 3)}</td><td>${fmt(t.diluentUL, 3)}</td><td>${fmt(t.totalUL, 3)}</td><td>${fmt(plan.vAddPerWellUL, 3)}</td><td>${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
+        + `<td>${fmt(t.transferInUL, 3)}</td><td>${fmt(t.diluentUL, 3)}</td><td>${fmt(t.totalUL, 3)}</td><td>${fmt(plan.vAddPerWellUL, 3)}</td></tr>`;
     });
     recipes += `</tbody></table></div>`;
   });
@@ -3882,7 +3894,8 @@ function renderDyes() {
   list.forEach((d) => {
     const o = document.createElement("option");
     o.value = d.name;
-    o.textContent = `${d.name}${d._user ? " \u2605 (yours)" : ""} (\u03bbmax ${d.lmax ?? "?"})`;
+    const lmaxTag = d.lmax ? ` (\u03bbmax ${d.lmax} nm)` : " (pH-sensitive)";
+    o.textContent = `${d.name}${d._user ? " \u2605 (yours)" : ""}${lmaxTag}`;
     sel.appendChild(o);
   });
   // Restore the prior selection if it still exists (e.g. after add); otherwise clear.
@@ -3908,7 +3921,7 @@ function renderDyeDetail(name) {
     ["\u03b5\u03bbmax", `${(d.e_lmax ?? 0).toLocaleString()} M\u207b\u00b9cm\u207b\u00b9`],
     ["CF@280", `${d.cf280}`],
     ["\u03b5280", `${(d.e280 ?? 0).toLocaleString()} M\u207b\u00b9cm\u207b\u00b9`],
-    ["\u03bbmax", `${d.lmax ?? "\u2014"} nm`],
+    ["\u03bbmax", d.lmax ? `${d.lmax} nm` : "pH-sensitive (no fixed \u03bbmax)"],
   ];
   if (d.comment) rows.push(["Note", escHtml(d.comment)]);
   const del = d._user ? `<button class="ghost" data-dye-del="${escHtml(d.name)}">Delete</button>` : "";
